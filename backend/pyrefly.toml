@@ -1,0 +1,8 @@
+python-interpreter-path = "C:/Users/Mayank Office/Desktop/MAPAR-v2/backend/.venv/Scripts/python.exe"
+search-path = [
+    ".",
+    "apps",
+    "common",
+    "config",
+    ".venv/Lib/site-packages"
+]

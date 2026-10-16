@@ -1,0 +1,11 @@
+-r base.txt
+
+pytest
+pytest-django
+pytest-cov
+ruff
+black
+mypy
+django-stubs
+djangorestframework-stubs
+ipython
