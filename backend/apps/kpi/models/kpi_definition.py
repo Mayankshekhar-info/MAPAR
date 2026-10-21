@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
-from apps.organization.models import Domain
+from apps.organization.models import Domain, MainCompany, Project, Circle
+from .kpi_config_version import KPIConfigurationVersion
 
 
 class KPIDefinition(models.Model):
@@ -55,7 +56,7 @@ class KPIDefinition(models.Model):
         FUNNEL = "FUNNEL", "Funnel Breakdown"
         METRIC_STAT = "METRIC_STAT", "Compact Metric Stat"
 
-    code = models.CharField(max_length=50, unique=True, db_index=True)
+    code = models.CharField(max_length=50, db_index=True)
     name = models.CharField(max_length=200, db_index=True)
     description = models.TextField(blank=True, default="")
     domain = models.ForeignKey(
@@ -64,6 +65,12 @@ class KPIDefinition(models.Model):
         null=True,
         blank=True,
         related_name="configured_kpis"
+    )
+    scope_type = models.CharField(
+        max_length=30,
+        choices=KPIConfigurationVersion.ScopeType.choices,
+        default=KPIConfigurationVersion.ScopeType.ENTERPRISE,
+        db_index=True,
     )
     hierarchy_level = models.CharField(
         max_length=50,
@@ -76,6 +83,47 @@ class KPIDefinition(models.Model):
         blank=True,
         db_index=True,
         help_text="Target organization node ID (e.g. Circle ID, Project ID, Company ID). None means dynamic viewer scope."
+    )
+    config_version = models.ForeignKey(
+        "kpi.KPIConfigurationVersion",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="kpi_definitions",
+        help_text="Originating approved configuration version"
+    )
+    company = models.ForeignKey(
+        MainCompany,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scoped_kpi_definitions",
+        help_text="Company-specific override scope if applicable"
+    )
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scoped_kpi_definitions",
+        help_text="Project-specific override scope if applicable"
+    )
+    circle = models.ForeignKey(
+        Circle,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scoped_kpi_definitions",
+        help_text="Circle-specific override scope if applicable"
+    )
+    is_inheritance_allowed = models.BooleanField(
+        default=True,
+        help_text="Whether child hierarchy nodes are permitted to inherit this definition if they lack an explicit override"
+    )
+    cleaning_rules = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Deterministic cleaning and normalization rules for raw data associated with this KPI"
     )
     visualization_type = models.CharField(
         max_length=50,
@@ -167,6 +215,7 @@ class KPIDefinition(models.Model):
         ordering = ["display_order", "code"]
         verbose_name = "KPI Definition"
         verbose_name_plural = "KPI Definitions"
+        unique_together = (("code", "config_version"),)
 
     def __str__(self):
         return f"{self.code} - {self.name} [{self.calculation_type}]"

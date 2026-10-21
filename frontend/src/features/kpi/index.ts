@@ -27,4 +27,8 @@ export * from "./components/FormulaExpressionEditor";
 export * from "./components/KPIBuilderModal";
 export * from "./components/KPIDiagnosticsDrawer";
 export * from "./components/KPIDefinitionTable";
+export * from "./components/KPIFormulaUploadModal";
+export * from "./components/KPIConfigVersionsDrawer";
+export * from "./hooks/useKPIFormulaUpload";
 export * from "./pages/KPIRegistryPage";
+

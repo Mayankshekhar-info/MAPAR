@@ -35,6 +35,7 @@ from apps.kpi.models import (
     KPIDependency,
     KPICalculationResult,
     KPICalculationAuditLog,
+    KPIConfigurationVersion,
 )
 from apps.kpi.services.formula_evaluator import (
     SafeFormulaEvaluator,
@@ -45,6 +46,169 @@ from apps.kpi.services.kpi_logic_parser import KPILogicParser, KPILogicParseErro
 
 
 class KPIEngineService:
+    @classmethod
+    def resolve_ancestor_hierarchy(cls, hierarchy_level: str, hierarchy_id: int) -> Dict[str, Optional[int]]:
+        """
+        Resolves the ancestor chain for a specific node in the 7-tier hierarchy:
+        MainCompany -> SubCompany -> Project -> Circle -> Domain -> Department -> SubDepartment.
+        Returns dict with: circle_id, project_id, sub_company_id, company_id.
+        """
+        lvl = (hierarchy_level or "").strip().upper()
+        res: Dict[str, Optional[int]] = {
+            "circle_id": None,
+            "project_id": None,
+            "sub_company_id": None,
+            "company_id": None,
+        }
+
+        if lvl == "CIRCLE":
+            c = Circle.objects.filter(id=hierarchy_id).select_related("project__sub_company").first()
+            if c:
+                res["circle_id"] = c.id
+                if c.project:
+                    res["project_id"] = c.project.id
+                    if c.project.sub_company:
+                        res["sub_company_id"] = c.project.sub_company.id
+                        res["company_id"] = c.project.sub_company.main_company_id
+        elif lvl == "PROJECT":
+            p = Project.objects.filter(id=hierarchy_id).select_related("sub_company").first()
+            if p:
+                res["project_id"] = p.id
+                if p.sub_company:
+                    res["sub_company_id"] = p.sub_company.id
+                    res["company_id"] = p.sub_company.main_company_id
+        elif lvl == "SUB_COMPANY":
+            sc = SubCompany.objects.filter(id=hierarchy_id).first()
+            if sc:
+                res["sub_company_id"] = sc.id
+                res["company_id"] = sc.main_company_id
+        elif lvl in ["MAIN_COMPANY", "COMPANY"]:
+            res["company_id"] = hierarchy_id
+        elif lvl == "DOMAIN":
+            d = Domain.objects.filter(id=hierarchy_id).select_related("circle__project__sub_company").first()
+            if d and d.circle:
+                return cls.resolve_ancestor_hierarchy("CIRCLE", d.circle.id)
+        elif lvl == "DEPARTMENT":
+            dept = Department.objects.filter(id=hierarchy_id).select_related("domain__circle__project__sub_company").first()
+            if dept and dept.domain and dept.domain.circle:
+                return cls.resolve_ancestor_hierarchy("CIRCLE", dept.domain.circle.id)
+        elif lvl == "SUB_DEPARTMENT":
+            sub_dept = SubDepartment.objects.filter(id=hierarchy_id).select_related("department__domain__circle__project__sub_company").first()
+            if sub_dept and sub_dept.department and sub_dept.department.domain and sub_dept.department.domain.circle:
+                return cls.resolve_ancestor_hierarchy("CIRCLE", sub_dept.department.domain.circle.id)
+
+        return res
+
+    @classmethod
+    def resolve_applicable_kpis_for_scope(
+        cls,
+        hierarchy_level: str,
+        hierarchy_id: int,
+        period: Optional[ReportingPeriod] = None,
+        kpi_code: Optional[str] = None,
+    ) -> List[KPIDefinition]:
+        """
+        Resolves the exact applicable, approved KPIDefinitions for a given hierarchy node.
+        Enforces strict precedence:
+        Circle Overrides > Project Overrides > Company Configurations > Enterprise Defaults.
+        Never leaks formulas to unrelated projects, circles, or companies.
+        Never uses global fallback for missing scoped definitions.
+        """
+        lvl = (hierarchy_level or "").strip().upper()
+        ancestors = cls.resolve_ancestor_hierarchy(lvl, hierarchy_id)
+
+        circle_id = ancestors.get("circle_id")
+        project_id = ancestors.get("project_id")
+        company_id = ancestors.get("company_id")
+
+        # 1. Fetch eligible definitions per level
+        # A. Circle-specific overrides (only if evaluating at CIRCLE level)
+        circle_kpis: Dict[str, KPIDefinition] = {}
+        if lvl == "CIRCLE" and circle_id:
+            qs = KPIDefinition.objects.filter(
+                is_active=True,
+                scope_type=KPIConfigurationVersion.ScopeType.CIRCLE,
+                circle_id=circle_id,
+            ).select_related("config_version", "source_dataset", "domain")
+            if kpi_code:
+                qs = qs.filter(code=kpi_code)
+            for k in qs:
+                circle_kpis[k.code] = k
+
+        # B. Project-specific overrides (if node has a project, or evaluating at PROJECT level)
+        project_kpis: Dict[str, KPIDefinition] = {}
+        if project_id and lvl in ["CIRCLE", "PROJECT", "DOMAIN", "DEPARTMENT", "SUB_DEPARTMENT"]:
+            qs = KPIDefinition.objects.filter(
+                is_active=True,
+                scope_type=KPIConfigurationVersion.ScopeType.PROJECT,
+                project_id=project_id,
+            ).select_related("config_version", "source_dataset", "domain")
+            if kpi_code:
+                qs = qs.filter(code=kpi_code)
+            for k in qs:
+                project_kpis[k.code] = k
+
+        # C. Company-level configurations (must match company and allow inheritance if below company)
+        company_kpis: Dict[str, KPIDefinition] = {}
+        if company_id:
+            qs = KPIDefinition.objects.filter(
+                is_active=True,
+                scope_type=KPIConfigurationVersion.ScopeType.COMPANY,
+                company_id=company_id,
+                project__isnull=True,
+                circle__isnull=True,
+            ).select_related("config_version", "source_dataset", "domain")
+            if lvl not in ["MAIN_COMPANY", "COMPANY"]:
+                qs = qs.filter(is_inheritance_allowed=True)
+            if kpi_code:
+                qs = qs.filter(code=kpi_code)
+            for k in qs:
+                company_kpis[k.code] = k
+
+        # D. Enterprise defaults (must allow inheritance if below enterprise)
+        enterprise_kpis: Dict[str, KPIDefinition] = {}
+        qs_ent = KPIDefinition.objects.filter(
+            is_active=True,
+            scope_type=KPIConfigurationVersion.ScopeType.ENTERPRISE,
+            company__isnull=True,
+            project__isnull=True,
+            circle__isnull=True,
+        ).select_related("config_version", "source_dataset", "domain")
+        if lvl not in ["ENTERPRISE", "MAIN_COMPANY"]:
+            qs_ent = qs_ent.filter(is_inheritance_allowed=True)
+        if kpi_code:
+            qs_ent = qs_ent.filter(code=kpi_code)
+        for k in qs_ent:
+            enterprise_kpis[k.code] = k
+
+        # 2. Merge adhering strictly to precedence order:
+        # Enterprise defaults -> Company configs -> Project overrides -> Circle overrides
+        resolved_map: Dict[str, KPIDefinition] = {}
+        for code, k in enterprise_kpis.items():
+            resolved_map[code] = k
+        for code, k in company_kpis.items():
+            resolved_map[code] = k
+        for code, k in project_kpis.items():
+            resolved_map[code] = k
+        for code, k in circle_kpis.items():
+            resolved_map[code] = k
+
+        return sorted(list(resolved_map.values()), key=lambda x: (x.display_order, x.code))
+
+    @classmethod
+    def resolve_kpi_for_scope(
+        cls,
+        kpi_code: str,
+        hierarchy_level: str,
+        hierarchy_id: int,
+    ) -> Optional[KPIDefinition]:
+        """Resolves the single authoritative KPIDefinition for a code under a specific hierarchy node."""
+        applicable = cls.resolve_applicable_kpis_for_scope(
+            hierarchy_level=hierarchy_level,
+            hierarchy_id=hierarchy_id,
+            kpi_code=kpi_code,
+        )
+        return applicable[0] if applicable else None
     @classmethod
     def resolve_hierarchy_descendant_circle_ids(cls, level: str, node_id: int) -> Set[int]:
         """
@@ -146,6 +310,63 @@ class KPIEngineService:
             lookup[cls._normalize_circle_token(c.code)] = cid
             lookup[cls._normalize_circle_token(c.name)] = cid
         return lookup
+
+    @classmethod
+    def _resolve_row_circle_id(
+        cls,
+        raw: Dict[str, Any],
+        batch: Any,
+        circle_lookup: Dict[str, int],
+        org_col: str = "",
+    ) -> Optional[int]:
+        """
+        Determines the authoritative Circle ID for a staged row.
+        Precedence:
+        1. Explicit org_col in raw_data (if configured).
+        2. Explicit 'circle' / 'circle_name' column in raw_data.
+        3. Batch-level assigned circle.
+        4. Matching circle code/name tokens found within raw_data string values.
+        """
+        # 1. Check configured org_col
+        if org_col and raw:
+            for k, v in raw.items():
+                if k.strip().lower() == org_col and v:
+                    raw_v = str(v).strip().upper()
+                    norm_v = cls._normalize_circle_token(raw_v)
+                    if raw_v in circle_lookup:
+                        return circle_lookup[raw_v]
+                    elif norm_v in circle_lookup:
+                        return circle_lookup[norm_v]
+
+        # 2. Check explicit circle column in raw_data
+        if raw:
+            for k, v in raw.items():
+                if "circle" in k.lower() and v:
+                    raw_v = str(v).strip().upper()
+                    norm_v = cls._normalize_circle_token(raw_v)
+                    if raw_v in circle_lookup:
+                        return circle_lookup[raw_v]
+                    elif norm_v in circle_lookup:
+                        return circle_lookup[norm_v]
+
+        # 3. Check batch-level circle assignment
+        if batch:
+            b_cid = getattr(batch, "circle_id", None) or (batch.circle.id if getattr(batch, "circle", None) else None)
+            if b_cid is not None:
+                return int(b_cid)
+
+        # 4. Fallback: scan any text column matching circle names
+        if raw:
+            for v in raw.values():
+                if v and isinstance(v, str):
+                    raw_v = v.strip().upper()
+                    norm_v = cls._normalize_circle_token(raw_v)
+                    if raw_v in circle_lookup:
+                        return circle_lookup[raw_v]
+                    elif norm_v in circle_lookup:
+                        return circle_lookup[norm_v]
+
+        return None
 
     @classmethod
     def _eval_single_filter(cls, raw_data: Dict[str, Any], field_name: str, operator: str, value: str) -> bool:
@@ -284,14 +505,11 @@ class KPIEngineService:
         node_name: str,
         kpi_target_val: Optional[Decimal] = None,
         decimal_precision: int = 2,
-        kpi: Optional[KPIDefinition] = None,
     ) -> Dict[str, Any]:
         """
         Calculates actual achievement for a comparison item from its configured column
         in the authoritative uploaded dataset, evaluating against the manual standard value.
-        Supports dynamic mathematical formulas and KPICalculatedOutput generation.
         """
-
         data_source = comp.get("data_source") or {}
         has_column = bool(comp.get("achieved_data_column") or data_source.get("metric_field"))
         if comp.get("is_manual") or (not has_column and comp.get("actual_value") not in (None, "")):
@@ -367,36 +585,7 @@ class KPIEngineService:
                         circle_match = True
 
                         if allowed_circles:
-                            row_circle_id: Optional[int] = None
-                            if row.batch:
-                                b_cid = getattr(row.batch, "circle_id", None) or (row.batch.circle.id if getattr(row.batch, "circle", None) else None)
-                                if b_cid is not None:
-                                    row_circle_id = int(b_cid)
-
-                            if row_circle_id is None and org_col:
-                                for k, v in raw.items():
-                                    if k.strip().lower() == org_col and v:
-                                        raw_v = str(v).strip().upper()
-                                        norm_v = cls._normalize_circle_token(raw_v)
-                                        if raw_v in circle_lookup:
-                                            row_circle_id = circle_lookup[raw_v]
-                                            break
-                                        elif norm_v in circle_lookup:
-                                            row_circle_id = circle_lookup[norm_v]
-                                            break
-
-                            if row_circle_id is None:
-                                for k, v in raw.items():
-                                    if "circle" in k.lower() and v:
-                                        raw_v = str(v).strip().upper()
-                                        norm_v = cls._normalize_circle_token(raw_v)
-                                        if raw_v in circle_lookup:
-                                            row_circle_id = circle_lookup[raw_v]
-                                            break
-                                        elif norm_v in circle_lookup:
-                                            row_circle_id = circle_lookup[norm_v]
-                                            break
-
+                            row_circle_id = cls._resolve_row_circle_id(raw, row.batch, circle_lookup, org_col=org_col)
                             if row_circle_id is not None:
                                 if row_circle_id not in allowed_circles:
                                     circle_match = False
@@ -431,26 +620,17 @@ class KPIEngineService:
         if isinstance(raw_rules, list) and len(raw_rules) > 0:
             for idx, r in enumerate(raw_rules):
                 if isinstance(r, dict):
-                    f_expr = (r.get("formula_expression") or (comp.get("formula_expression") if idx == 0 else "") or "").strip()
                     rules_to_eval.append({
                         "id": r.get("id") or f"rule-{idx+1}",
-                        "achieved_data_column": (r.get("achieved_data_column") or r.get("output_column_name") or "").strip(),
+                        "achieved_data_column": (r.get("achieved_data_column") or "").strip(),
                         "standard_value": r.get("standard_value") if r.get("standard_value") not in (None, "") else r.get("target_value"),
                         "performance_direction": r.get("performance_direction") or "HIGHER_BETTER",
-                        "unit": r.get("unit") or r.get("output_unit") or comp.get("unit") or "%",
+                        "unit": r.get("unit") or comp.get("unit") or "%",
                         "aggregation": r.get("aggregation") or data_source.get("aggregation") or "AVG",
                         "actual_value": r.get("actual_value"),
-                        "formula_expression": f_expr,
-                        "formula_name": r.get("formula_name") or comp.get("name") or f"Formula #{idx+1}",
-                        "input_column": (r.get("input_column") or comp.get("input_column") or r.get("achieved_data_column") or "").strip(),
-                        "input_unit": r.get("input_unit") or comp.get("input_unit") or "Minutes",
-                        "output_column_name": (r.get("output_column_name") or comp.get("output_column_name") or r.get("achieved_data_column") or "Calculated Output").strip(),
-                        "output_unit": r.get("output_unit") or r.get("unit") or comp.get("unit") or "%",
-                        "decimal_precision": r.get("decimal_precision", decimal_precision),
-                        "constants": r.get("constants") or comp.get("constants") or {},
                     })
         else:
-            col_fallback = (comp.get("achieved_data_column") or data_source.get("metric_field") or comp.get("output_column_name") or "").strip()
+            col_fallback = (comp.get("achieved_data_column") or data_source.get("metric_field") or "").strip()
             std_fallback = comp.get("standard_value") if comp.get("standard_value") not in (None, "") else comp.get("target_value")
             rules_to_eval.append({
                 "id": comp.get("id") or "rule-1",
@@ -460,14 +640,6 @@ class KPIEngineService:
                 "unit": comp.get("unit") or "%",
                 "aggregation": data_source.get("aggregation") or "AVG",
                 "actual_value": comp.get("actual_value"),
-                "formula_expression": (comp.get("formula_expression") or "").strip(),
-                "formula_name": comp.get("formula_name") or comp.get("name") or "",
-                "input_column": (comp.get("input_column") or col_fallback).strip(),
-                "input_unit": comp.get("input_unit") or "Minutes",
-                "output_column_name": (comp.get("output_column_name") or col_fallback or "Calculated Output").strip(),
-                "output_unit": comp.get("output_unit") or comp.get("unit") or "%",
-                "decimal_precision": comp.get("decimal_precision", decimal_precision),
-                "constants": comp.get("constants") or {},
             })
 
         evaluated_rules = []
@@ -494,109 +666,7 @@ class KPIEngineService:
             r_perf_status = "UNKNOWN"
             r_error = ""
 
-            formula_expr = (r.get("formula_expression") or "").strip()
-
-            if ds_type == "UPLOAD" and formula_expr:
-                if not template:
-                    r_calc_status = "NO_DATA"
-                    r_perf_status = "NO_DATA"
-                    r_error = "No uploaded dataset available in the system."
-                elif not batches:
-                    r_calc_status = "NO_DATA"
-                    r_perf_status = "NO_DATA"
-                    r_error = f"Awaiting uploaded data. No uploaded batches found for dataset '{template.name}' in reporting period '{c_period_name}'."
-                elif c_records_considered == 0:
-                    r_calc_status = "NO_DATA"
-                    r_perf_status = "NO_DATA"
-                    r_error = f"No uploaded records found for dataset '{template.name}' matching {node_name}."
-                else:
-                    from apps.kpi.services.formula_calculation_service import KPIFormulaCalculationService
-                    f_cfg = {
-                        "formula_expression": formula_expr,
-                        "formula_name": r.get("formula_name") or comp.get("name") or "",
-                        "input_column": r.get("input_column") or r_col,
-                        "input_unit": r.get("input_unit") or "Minutes",
-                        "output_column_name": r.get("output_column_name") or r_col,
-                        "output_unit": r.get("output_unit") or r.get("unit") or "%",
-                        "decimal_precision": int(r.get("decimal_precision", decimal_precision)),
-                        "constants": r.get("constants") or {},
-                        "aggregation": r.get("aggregation") or "AVG",
-                    }
-                    target_batch = active_batches[0] if 'active_batches' in locals() and active_batches else batches[0]
-                    if kpi:
-                        batch_res = KPIFormulaCalculationService.execute_and_persist_formula_outputs(
-                            kpi=kpi,
-                            batch=target_batch,
-                            formula_config=f_cfg,
-                            rule_id=r.get("id") or "rule_1",
-                            formula_name=r.get("formula_name") or comp.get("name") or "",
-                        )
-                    else:
-                        row_vals = []
-                        st_counts = {"SUCCESS": 0, "MISSING_COLUMN": 0, "INVALID_INPUT": 0, "PENDING_DATA": 0, "DIV_ZERO": 0}
-                        for m_r in matched_rows:
-                            c_v, st, err = KPIFormulaCalculationService.evaluate_row_formula(
-                                raw_row_data=m_r.raw_data or {},
-                                formula_config=f_cfg,
-                                constants=f_cfg["constants"],
-                            )
-                            st_counts[st] = st_counts.get(st, 0) + 1
-                            if st == "SUCCESS" and c_v is not None:
-                                row_vals.append(c_v)
-                        avg_v = None
-                        if row_vals:
-                            avg_v = sum(row_vals, Decimal("0")) / Decimal(str(len(row_vals)))
-                        batch_res = {
-                            "overall_status": "SUCCESS" if row_vals else "CONFIG_INVALID" if st_counts["MISSING_COLUMN"] > 0 else "NO_DATA",
-                            "calculated_value": avg_v,
-                        }
-
-                    ov_status = batch_res.get("overall_status", "SUCCESS")
-                    if ov_status == "SUCCESS" and batch_res.get("calculated_value") is not None:
-                        d_val = batch_res["calculated_value"]
-                        rule_prec = int(r.get("decimal_precision", decimal_precision))
-                        prec_str = "1." + ("0" * rule_prec) if rule_prec > 0 else "1"
-                        r_actual = float(d_val.quantize(Decimal(prec_str), rounding=ROUND_HALF_UP))
-                        r_calc_status = "SUCCESS"
-                        if r_target_num is not None:
-                            r_var = round(r_actual - r_target_num, 2)
-                            if r_pdir == "HIGHER_BETTER":
-                                r_perf_status = "MEETS_TARGET" if r_actual >= r_target_num else "BELOW_TARGET"
-                                r_pct = round((r_actual / r_target_num) * 100, 2) if r_target_num != 0 else (100.0 if r_actual >= r_target_num else 0.0)
-                            elif r_pdir == "LOWER_BETTER":
-                                r_perf_status = "MEETS_TARGET" if r_actual <= r_target_num else "EXCEEDED_LIMIT"
-                                r_pct = round((r_target_num / r_actual) * 100, 2) if r_actual > 0 else (100.0 if r_actual <= r_target_num else 0.0)
-                            else:
-                                if abs(r_actual - r_target_num) < 1e-6:
-                                    r_perf_status = "MEETS_TARGET"
-                                    r_pct = 100.0
-                                else:
-                                    r_perf_status = "DOES_NOT_MATCH"
-                                    r_pct = round((r_actual / r_target_num) * 100, 2) if r_target_num != 0 else 0.0
-                        else:
-                            r_perf_status = "SUCCESS"
-                    elif ov_status == "MISSING_COLUMN":
-                        r_calc_status = "CONFIG_INVALID"
-                        r_perf_status = "CONFIG_INVALID"
-                        r_error = f"Column '{f_cfg['input_column']}' not found in uploaded records for dataset '{template.name}'."
-                    elif ov_status == "INVALID_INPUT":
-                        r_calc_status = "INVALID_INPUT"
-                        r_perf_status = "INVALID_INPUT"
-                        r_error = f"Impossible or invalid input value in column '{f_cfg['input_column']}'."
-                    elif ov_status == "PENDING_DATA":
-                        r_calc_status = "NO_DATA"
-                        r_perf_status = "NO_DATA"
-                        r_error = f"Input column '{f_cfg['input_column']}' is empty in uploaded records."
-                    elif ov_status == "DIV_ZERO":
-                        r_calc_status = "DIV_ZERO"
-                        r_perf_status = "ERROR"
-                        r_error = "Division by zero in formula calculation."
-                    else:
-                        r_calc_status = "ERROR"
-                        r_perf_status = "ERROR"
-                        r_error = "Formula calculation error."
-
-            elif ds_type == "UPLOAD":
+            if ds_type == "UPLOAD":
                 if not template:
                     r_calc_status = "NO_DATA"
                     r_perf_status = "NO_DATA"
@@ -771,10 +841,6 @@ class KPIEngineService:
                 r_status_label = "Column Missing"
             elif r_perf_status == "NO_DATA":
                 r_status_label = "Pending Data"
-            elif r_perf_status == "INVALID_INPUT":
-                r_status_label = "Invalid Input"
-            elif r_perf_status == "DIV_ZERO":
-                r_status_label = "Calculation Error"
             else:
                 r_status_label = "Not Met"
 
@@ -793,15 +859,7 @@ class KPIEngineService:
                 "calculation_status": r_calc_status,
                 "status_label": r_status_label,
                 "error_message": r_error,
-                "formula_name": r.get("formula_name") or "",
-                "formula_expression": r.get("formula_expression") or "",
-                "input_column": r.get("input_column") or r_col,
-                "input_unit": r.get("input_unit") or "",
-                "output_column_name": r.get("output_column_name") or r_col,
-                "output_unit": r.get("output_unit") or r.get("unit") or "%",
-                "constants": r.get("constants") or {},
             })
-
 
         # Calculate Overall Comparison Status based on all individual rules:
         # 1. Met: only when ALL applicable rules are met
@@ -895,14 +953,43 @@ class KPIEngineService:
     ) -> Dict[str, Any]:
         """
         Authoritative single KPI execution across source data for a specific period and node.
-        Saves result to KPICalculationResult and KPICalculationAuditLog.
+        Resolves effective scoped KPI override and saves result with audit lineage.
         """
         start_time = time.time()
+
+        # 0. Resolve the effective scoped override for this hierarchy node
+        effective_kpi = cls.resolve_kpi_for_scope(kpi.code, hierarchy_level, hierarchy_id)
+        if effective_kpi and effective_kpi.id != kpi.id:
+            kpi = effective_kpi
+
+        # Validate that the selected KPI definition is eligible to be evaluated for this hierarchy scope
+        ancestors = cls.resolve_ancestor_hierarchy(hierarchy_level, hierarchy_id)
+        if kpi.scope_type == KPIConfigurationVersion.ScopeType.PROJECT:
+            if ancestors.get("project_id") != kpi.project_id:
+                raise ValidationError(
+                    f"KPI '{kpi.code}' is scoped to Project #{kpi.project_id} and cannot be calculated for {hierarchy_level}:{hierarchy_id}."
+                )
+        elif kpi.scope_type == KPIConfigurationVersion.ScopeType.CIRCLE:
+            if ancestors.get("circle_id") != kpi.circle_id:
+                raise ValidationError(
+                    f"KPI '{kpi.code}' is scoped to Circle #{kpi.circle_id} and cannot be calculated for {hierarchy_level}:{hierarchy_id}."
+                )
+        elif kpi.scope_type == KPIConfigurationVersion.ScopeType.COMPANY:
+            if ancestors.get("company_id") != kpi.company_id:
+                raise ValidationError(
+                    f"KPI '{kpi.code}' is scoped to Company #{kpi.company_id} and cannot be calculated for {hierarchy_level}:{hierarchy_id}."
+                )
+
+        node_name = cls.get_node_display_name(hierarchy_level, hierarchy_id)
+
         diagnostics: Dict[str, Any] = {
             "kpi_code": kpi.code,
             "period": period.name,
             "hierarchy": f"{hierarchy_level}:{hierarchy_id}",
+            "effective_hierarchy_node": node_name,
             "calculation_type": kpi.calculation_type,
+            "scope_type": kpi.scope_type,
+            "config_version": kpi.config_version.version_number if kpi.config_version else 1,
             "batches_considered": [],
             "parameter_values": {},
             "step_log": [],
@@ -910,7 +997,6 @@ class KPIEngineService:
 
         # 1. Resolve circle descendants for hierarchy filtering
         allowed_circles = cls.resolve_hierarchy_descendant_circle_ids(hierarchy_level, hierarchy_id)
-        node_name = cls.get_node_display_name(hierarchy_level, hierarchy_id)
         diagnostics["descendant_circle_count"] = len(allowed_circles)
 
         # 2. Check for Derived KPI dependencies
@@ -1005,40 +1091,7 @@ class KPIEngineService:
             circle_match = True
 
             if allowed_circles:
-                row_circle_id: Optional[int] = None
-
-                # Check batch-level circle assignment first
-                if row.batch:
-                    b_cid = getattr(row.batch, "circle_id", None) or (row.batch.circle.id if getattr(row.batch, "circle", None) else None)
-                    if b_cid is not None:
-                        row_circle_id = int(b_cid)
-
-                # If not on batch, inspect raw_data columns
-                if row_circle_id is None:
-                    for k, v in raw.items():
-                        if "circle" in k.lower() and v:
-                            raw_v = str(v).strip().upper()
-                            norm_v = cls._normalize_circle_token(raw_v)
-                            if raw_v in circle_lookup:
-                                row_circle_id = circle_lookup[raw_v]
-                                break
-                            elif norm_v in circle_lookup:
-                                row_circle_id = circle_lookup[norm_v]
-                                break
-
-                # Fallback: scan any text column matching circle names
-                if row_circle_id is None:
-                    for v in raw.values():
-                        if v and isinstance(v, str):
-                            raw_v = v.strip().upper()
-                            norm_v = cls._normalize_circle_token(raw_v)
-                            if raw_v in circle_lookup:
-                                row_circle_id = circle_lookup[raw_v]
-                                break
-                            elif norm_v in circle_lookup:
-                                row_circle_id = circle_lookup[norm_v]
-                                break
-
+                row_circle_id = cls._resolve_row_circle_id(raw, row.batch, circle_lookup)
                 if row_circle_id is not None:
                     if row_circle_id not in allowed_circles:
                         circle_match = False
@@ -1117,7 +1170,7 @@ class KPIEngineService:
         target_val: Optional[Decimal] = None
 
         p_cfg = getattr(kpi, "presentation_config", {}) or {}
-        configured_comparisons = p_cfg.get("comparisons") or p_cfg.get("comparison_items") or []
+        configured_comparisons = p_cfg.get("comparisons", [])
         active_comparisons = [c for c in configured_comparisons if c.get("is_enabled", True)] if isinstance(configured_comparisons, list) else []
 
         processed_comparisons = []
@@ -1132,9 +1185,7 @@ class KPIEngineService:
                         node_name=node_name,
                         kpi_target_val=kpi.target_value,
                         decimal_precision=kpi.decimal_precision or 2,
-                        kpi=kpi,
                     )
-
                 else:
                     p_comp = {**c, "performance_status": "DISABLED"}
                 processed_comparisons.append(p_comp)
@@ -1198,7 +1249,14 @@ class KPIEngineService:
         elif kpi.source_dataset and records_considered == 0 and kpi.calculation_type != KPIDefinition.CalculationType.DERIVED:
             calc_status = KPICalculationResult.CalculationStatus.NO_DATA
             ds_name = kpi.source_dataset.name if kpi.source_dataset else "Dataset"
-            error_msg = f"No uploaded records found for dataset '{ds_name}' matching {node_name}."
+            if not batches:
+                error_msg = f"Awaiting uploaded data. No uploaded batches found for dataset '{ds_name}' in reporting period '{period.name if period else 'All'}'."
+            elif not scope_matched_rows:
+                error_msg = f"No uploaded records found for dataset '{ds_name}' matching {node_name} in reporting period '{period.name if period else 'All'}'."
+            elif not period_matched_rows:
+                error_msg = f"Uploaded records for dataset '{ds_name}' do not match reporting period '{period.name if period else 'All'}'."
+            else:
+                error_msg = f"Uploaded records for dataset '{ds_name}' were excluded by KPI filter rules."
         else:
             try:
                 if kpi.calculation_type == KPIDefinition.CalculationType.SIMPLE_AGGREGATE:
@@ -1209,11 +1267,8 @@ class KPIEngineService:
                     else:
                         calculated_value = Decimal("0")
 
-                elif kpi.calculation_type in [KPIDefinition.CalculationType.FORMULA, KPIDefinition.CalculationType.DERIVED]:
-                    expr = kpi.formula_expression.strip()
-                    if not expr:
-                        raise SafeFormulaError("No formula expression configured for this KPI definition.")
-                    calculated_value = SafeFormulaEvaluator.evaluate(expr, param_context)
+                elif kpi.formula_expression and kpi.formula_expression.strip():
+                    calculated_value = SafeFormulaEvaluator.evaluate(kpi.formula_expression.strip(), param_context)
 
                 elif kpi.calculation_type == KPIDefinition.CalculationType.RATIO:
                     num = param_context.get("numerator", param_context.get("X", Decimal("0")))
@@ -1430,36 +1485,46 @@ class KPIEngineService:
             if hierarchy_level.upper() == "CIRCLE" and period:
                 circle_obj = Circle.objects.filter(id=hierarchy_id).first()
                 if circle_obj:
-                    kpi_legacy, _ = KPI.objects.get_or_create(
-                        code=kpi.code,
-                        defaults={
-                            "name": kpi.name,
-                            "unit": kpi.unit or "Units",
-                            "direction": kpi.direction or "HIGHER_BETTER",
-                            "is_active": kpi.is_active,
-                            "display_order": kpi.display_order,
-                            "domain": kpi.domain or circle_obj.domains.first() or Domain.objects.first(),
-                        }
-                    )
-                    if kpi.domain and kpi_legacy.domain_id != kpi.domain_id:
-                        kpi_legacy.domain = kpi.domain
-                        kpi_legacy.save(update_fields=["domain"])
+                    try:
+                        dom_obj = kpi.domain or circle_obj.domains.first() or Domain.objects.first()
+                        if not dom_obj:
+                            dom_obj, _ = Domain.objects.get_or_create(
+                                name="Operations",
+                                defaults={"code": "OPS", "circle": circle_obj}
+                            )
+                        if dom_obj:
+                            kpi_legacy, _ = KPI.objects.get_or_create(
+                                code=kpi.code,
+                                defaults={
+                                    "name": kpi.name,
+                                    "unit": kpi.unit or "Units",
+                                    "direction": kpi.direction or "HIGHER_BETTER",
+                                    "is_active": kpi.is_active,
+                                    "display_order": kpi.display_order,
+                                    "domain": dom_obj,
+                                }
+                            )
+                            if kpi.domain and kpi_legacy.domain_id != kpi.domain_id:
+                                kpi_legacy.domain = kpi.domain
+                                kpi_legacy.save(update_fields=["domain"])
 
-                    if calculated_value is not None and calc_status == KPICalculationResult.CalculationStatus.SUCCESS:
-                        KPIValue.objects.update_or_create(
-                            kpi=kpi_legacy,
-                            circle=circle_obj,
-                            period=period,
-                            defaults={
-                                "actual_value": calculated_value,
-                                "target_value": target_val,
-                                "variance_to_target": variance_to_target,
-                                "variance_percentage": variance_percentage,
-                                "rag_status": rag_status if rag_status in ["GREEN", "AMBER", "RED"] else "GREEN",
-                                "notes": f"Calculated from {kpi.source_dataset.name if kpi.source_dataset else 'Target vs Achievement Comparisons (Manual)'}",
-                                "entered_by": user if user and user.is_authenticated else None,
-                            }
-                        )
+                            if calculated_value is not None and calc_status == KPICalculationResult.CalculationStatus.SUCCESS:
+                                KPIValue.objects.update_or_create(
+                                    kpi=kpi_legacy,
+                                    circle=circle_obj,
+                                    period=period,
+                                    defaults={
+                                        "actual_value": calculated_value,
+                                        "target_value": target_val,
+                                        "variance_to_target": variance_to_target,
+                                        "variance_percentage": variance_percentage,
+                                        "rag_status": rag_status if rag_status in ["GREEN", "AMBER", "RED"] else "GREEN",
+                                        "notes": f"Calculated from {kpi.source_dataset.name if kpi.source_dataset else 'Target vs Achievement Comparisons (Manual)'}",
+                                        "entered_by": user if user and user.is_authenticated else None,
+                                    }
+                                )
+                    except Exception as legacy_ex:
+                        diagnostics["legacy_sync_error"] = str(legacy_ex)
 
         return {
             "result_id": res_obj.id,
@@ -1542,22 +1607,7 @@ class KPIEngineService:
             circle_match = True
 
             if allowed_circles:
-                row_circle_id = None
-                if row.batch:
-                    b_cid = getattr(row.batch, "circle_id", None) or (row.batch.circle.id if getattr(row.batch, "circle", None) else None)
-                    if b_cid is not None:
-                        row_circle_id = int(b_cid)
-                if row_circle_id is None:
-                    for k, v in raw.items():
-                        if "circle" in k.lower() and v:
-                            raw_v = str(v).strip().upper()
-                            norm_v = cls._normalize_circle_token(raw_v)
-                            if raw_v in circle_lookup:
-                                row_circle_id = circle_lookup[raw_v]
-                                break
-                            elif norm_v in circle_lookup:
-                                row_circle_id = circle_lookup[norm_v]
-                                break
+                row_circle_id = cls._resolve_row_circle_id(raw, row.batch, circle_lookup)
                 if row_circle_id is not None:
                     if row_circle_id not in allowed_circles:
                         circle_match = False
@@ -1599,22 +1649,13 @@ class KPIEngineService:
         if not columns and paged_rows:
             columns = list(paged_rows[0].raw_data.keys())
 
-        from apps.kpi.services.formula_calculation_service import KPIFormulaCalculationService
-        enriched_records = KPIFormulaCalculationService.merge_calculated_columns_into_rows(paged_rows, kpi=kpi)
-        if enriched_records:
-            existing_cols_set = set(columns)
-            for k in enriched_records[0].keys():
-                if k not in existing_cols_set:
-                    columns.append(k)
-                    existing_cols_set.add(k)
-
         return {
             "total_records": total_count,
             "page": page,
             "page_size": page_size,
             "has_more": total_count > end_idx,
             "columns": columns,
-            "records": enriched_records if enriched_records else [r.raw_data for r in paged_rows],
+            "records": [r.raw_data for r in paged_rows],
             "node_name": node_name,
             "period_name": period.name if period else "",
             "applied_filters": [
@@ -1787,22 +1828,7 @@ class KPIEngineService:
             circle_match = True
 
             if allowed_circles:
-                row_circle_id = None
-                if row.batch:
-                    b_cid = getattr(row.batch, "circle_id", None) or (row.batch.circle.id if getattr(row.batch, "circle", None) else None)
-                    if b_cid is not None:
-                        row_circle_id = int(b_cid)
-                if row_circle_id is None:
-                    for k, v in raw.items():
-                        if "circle" in k.lower() and v:
-                            raw_v = str(v).strip().upper()
-                            norm_v = cls._normalize_circle_token(raw_v)
-                            if raw_v in circle_lookup:
-                                row_circle_id = circle_lookup[raw_v]
-                                break
-                            elif norm_v in circle_lookup:
-                                row_circle_id = circle_lookup[norm_v]
-                                break
+                row_circle_id = cls._resolve_row_circle_id(raw, row.batch, circle_lookup)
                 if row_circle_id is not None:
                     if row_circle_id not in allowed_circles:
                         circle_match = False

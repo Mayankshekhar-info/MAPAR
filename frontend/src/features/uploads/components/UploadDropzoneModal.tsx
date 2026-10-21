@@ -63,7 +63,8 @@ interface UploadDropzoneModalProps {
       startDate?: string | null;
       endDate?: string | null;
     },
-    kpiId?: number | null
+    kpiId?: number | null,
+    duplicateHandling?: "ERROR" | "SKIP" | "CORRECT"
   ) => Promise<void>;
 }
 
@@ -109,6 +110,7 @@ export const UploadDropzoneModal: React.FC<UploadDropzoneModalProps> = ({
   // Step 3: KPI Selection State
   const [selectedKPIId, setSelectedKPIId] = useState<number | null>(null);
   const [kpiSearch, setKPISearch] = useState("");
+  const [duplicateHandling, setDuplicateHandling] = useState<"ERROR" | "SKIP" | "CORRECT">("ERROR");
 
   // Step 5: Execution Result State
   const [executionResult, setExecutionResult] = useState<ImportBatch | null>(null);
@@ -239,7 +241,8 @@ export const UploadDropzoneModal: React.FC<UploadDropzoneModalProps> = ({
         selectedTemplateId,
         periodIdToPass,
         periodConfig,
-        selectedKPIId
+        selectedKPIId,
+        duplicateHandling
       );
       // Success will automatically close and route to batch detail page
     } catch (err: any) {
@@ -783,6 +786,50 @@ export const UploadDropzoneModal: React.FC<UploadDropzoneModalProps> = ({
                   </Box>
                 </Box>
               </Stack>
+            </Card>
+
+            {/* Duplicate Record Handling Policy */}
+            <Card variant="outlined" sx={{ p: 2, borderRadius: "10px", bgcolor: colorTokens.workspace.background }}>
+              <Typography variant="caption" sx={{ color: colorTokens.text.muted, textTransform: "uppercase", fontWeight: 700, display: "block", mb: 1 }}>
+                Duplicate Records Policy
+              </Typography>
+              <RadioGroup
+                row
+                value={duplicateHandling}
+                onChange={(e) => setDuplicateHandling(e.target.value as any)}
+                sx={{ gap: 2, display: "flex", flexWrap: "wrap" }}
+              >
+                <FormControlLabel
+                  value="ERROR"
+                  control={<Radio size="small" />}
+                  label={
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>Flag as Error</Typography>
+                      <Typography variant="caption" sx={{ color: colorTokens.text.secondary }}>Mark complete batch for review</Typography>
+                    </Box>
+                  }
+                />
+                <FormControlLabel
+                  value="SKIP"
+                  control={<Radio size="small" />}
+                  label={
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>Skip Duplicates</Typography>
+                      <Typography variant="caption" sx={{ color: colorTokens.text.secondary }}>Import only unique rows</Typography>
+                    </Box>
+                  }
+                />
+                <FormControlLabel
+                  value="CORRECT"
+                  control={<Radio size="small" />}
+                  label={
+                    <Box>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>Correct Existing</Typography>
+                      <Typography variant="caption" sx={{ color: colorTokens.text.secondary }}>Update records with audit log</Typography>
+                    </Box>
+                  }
+                />
+              </RadioGroup>
             </Card>
 
             <Alert severity="info" sx={{ borderRadius: "8px" }}>

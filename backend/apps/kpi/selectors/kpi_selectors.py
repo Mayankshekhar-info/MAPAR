@@ -129,11 +129,9 @@ class KPISelectors:
         if not period_id:
             return []
 
-        qs = KPICalculationResult.objects.select_related("kpi", "reporting_period").filter(
-            kpi__is_active=True,
-            reporting_period_id=period_id,
-        )
+        period_obj = ReportingPeriod.objects.filter(id=period_id).first()
 
+        cards = []
         if hierarchy_level and hierarchy_id:
             # Enforce authorization
             if user and not user.is_superuser:
@@ -142,48 +140,74 @@ class KPISelectors:
                     circle_id=hierarchy_id if hierarchy_level.upper() == "CIRCLE" else None,
                     action="view"
                 )
-            qs = qs.filter(hierarchy_level=hierarchy_level.upper(), hierarchy_id=hierarchy_id)
-        elif user and not user.is_superuser:
-            scope = AuthorizationService.get_user_hierarchy_scope(user)
-            if not scope.is_unrestricted and scope.circle_ids:
-                qs = qs.filter(hierarchy_level="CIRCLE", hierarchy_id__in=scope.circle_ids)
 
-        # Auto-evaluate any active KPIs applicable to this node that don't have a result yet
-        existing_kpi_ids = set(qs.values_list("kpi_id", flat=True))
-        period_obj = ReportingPeriod.objects.filter(id=period_id).first()
-        if period_obj:
-            uncalculated_kpis = KPIDefinition.objects.filter(is_active=True).exclude(id__in=existing_kpi_ids)
-            if hierarchy_level and hierarchy_id:
-                uncalculated_kpis = uncalculated_kpis.filter(
-                    Q(hierarchy_id=hierarchy_id, hierarchy_level=hierarchy_level.upper()) |
-                    Q(hierarchy_id__isnull=True)
-                )
-            if uncalculated_kpis.exists():
-                from apps.kpi.services.kpi_engine_service import KPIEngineService
-                for kpi_to_calc in uncalculated_kpis[:20]:
-                    try:
-                        target_lvl = hierarchy_level or kpi_to_calc.hierarchy_level or "CIRCLE"
-                        target_id = hierarchy_id or kpi_to_calc.hierarchy_id or 1
-                        KPIEngineService.calculate_kpi(
-                            kpi=kpi_to_calc,
-                            period=period_obj,
-                            hierarchy_level=target_lvl,
-                            hierarchy_id=target_id,
-                            trigger_type="DASHBOARD_VIEW",
-                            user=user,
-                        )
-                    except Exception:
-                        pass
-                # Re-query results
-                qs = KPICalculationResult.objects.select_related("kpi", "reporting_period").filter(
-                    kpi__is_active=True,
+            # Strictly resolve the applicable, approved KPIDefinitions for this hierarchy node
+            # (Circle Overrides > Project Overrides > Company Configurations > Enterprise Defaults)
+            from apps.kpi.services.kpi_engine_service import KPIEngineService
+            applicable_kpis = KPIEngineService.resolve_applicable_kpis_for_scope(
+                hierarchy_level=hierarchy_level,
+                hierarchy_id=hierarchy_id,
+                period=period_obj,
+            )
+
+            if not applicable_kpis:
+                return []
+
+            target_lvl = hierarchy_level.upper()
+            applicable_ids = [k.id for k in applicable_kpis]
+
+            existing_results = {
+                res.kpi_id: res
+                for res in KPICalculationResult.objects.select_related("kpi", "reporting_period").filter(
+                    kpi_id__in=applicable_ids,
+                    hierarchy_level=target_lvl,
+                    hierarchy_id=hierarchy_id,
                     reporting_period_id=period_id,
                 )
-                if hierarchy_level and hierarchy_id:
-                    qs = qs.filter(hierarchy_level=hierarchy_level.upper(), hierarchy_id=hierarchy_id)
+            }
 
-        cards = []
-        for res in qs.order_by("kpi__display_order", "kpi__code")[:100]:
+            # Auto-evaluate any applicable KPI that does not yet have a result
+            if period_obj:
+                for kpi_to_calc in applicable_kpis:
+                    if kpi_to_calc.id not in existing_results:
+                        try:
+                            KPIEngineService.calculate_kpi(
+                                kpi=kpi_to_calc,
+                                period=period_obj,
+                                hierarchy_level=target_lvl,
+                                hierarchy_id=hierarchy_id,
+                                trigger_type="DASHBOARD_VIEW",
+                                user=user,
+                            )
+                            saved = KPICalculationResult.objects.select_related("kpi", "reporting_period").filter(
+                                kpi_id=kpi_to_calc.id,
+                                hierarchy_level=target_lvl,
+                                hierarchy_id=hierarchy_id,
+                                reporting_period_id=period_id,
+                            ).first()
+                            if saved:
+                                existing_results[kpi_to_calc.id] = saved
+                        except Exception:
+                            pass
+
+            # Present results in defined display order for the applicable KPIs
+            ordered_results = []
+            for kpi in applicable_kpis:
+                if kpi.id in existing_results:
+                    ordered_results.append(existing_results[kpi.id])
+            qs_to_render = ordered_results
+        else:
+            qs = KPICalculationResult.objects.select_related("kpi", "reporting_period").filter(
+                kpi__is_active=True,
+                reporting_period_id=period_id,
+            )
+            if user and not user.is_superuser:
+                scope = AuthorizationService.get_user_hierarchy_scope(user)
+                if not scope.is_unrestricted and scope.circle_ids:
+                    qs = qs.filter(hierarchy_level="CIRCLE", hierarchy_id__in=scope.circle_ids)
+            qs_to_render = list(qs.order_by("kpi__display_order", "kpi__code")[:100])
+
+        for res in qs_to_render:
             kpi = res.kpi
             lineage = res.lineage_info or {}
             cards.append({

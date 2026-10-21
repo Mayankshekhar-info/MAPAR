@@ -43,7 +43,7 @@ class SlideHierarchyServiceTests(TestCase):
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS kpis_kpi (
                         id SERIAL PRIMARY KEY,
-                        code VARCHAR(20) UNIQUE,
+                        code VARCHAR(50) UNIQUE,
                         name VARCHAR(200),
                         definition TEXT DEFAULT '',
                         calculation_formula TEXT DEFAULT '',
@@ -100,7 +100,7 @@ class SlideHierarchyServiceTests(TestCase):
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS kpis_kpi (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        code VARCHAR(20) UNIQUE,
+                        code VARCHAR(50) UNIQUE,
                         name VARCHAR(200),
                         definition TEXT DEFAULT '',
                         calculation_formula TEXT DEFAULT '',

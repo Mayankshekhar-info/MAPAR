@@ -1,6 +1,7 @@
 from typing import Optional
 from rest_framework import serializers
 from apps.kpi.models import (
+    KPIConfigurationVersion,
     KPIDefinition,
     KPIParameter,
     KPIFilter,
@@ -8,7 +9,7 @@ from apps.kpi.models import (
     KPICalculationResult,
     KPICalculationAuditLog,
 )
-from apps.organization.models import Domain
+from apps.organization.models import Domain, MainCompany, Project
 from apps.imports.models import UploadTemplate
 
 
@@ -80,6 +81,13 @@ class KPIDefinitionSerializer(serializers.ModelSerializer):
             "is_active",
             "is_executive",
             "display_order",
+            "config_version",
+            "scope_type",
+            "company",
+            "project",
+            "circle",
+            "is_inheritance_allowed",
+            "cleaning_rules",
             "parameters",
             "filters",
             "dependencies",
@@ -274,18 +282,6 @@ class KPIFormulaValidationSerializer(serializers.Serializer):
     variables = serializers.ListField(child=serializers.CharField(), required=False, default=list)
 
 
-class KPIFormulaPreviewSerializer(serializers.Serializer):
-    dataset_id = serializers.IntegerField(required=False, allow_null=True)
-    formula = serializers.CharField(allow_blank=False)
-    input_column = serializers.CharField(required=False, allow_blank=True, default="")
-    constants = serializers.DictField(required=False, default=dict)
-    decimal_precision = serializers.IntegerField(required=False, default=2)
-    input_unit = serializers.CharField(required=False, allow_blank=True, default="")
-    output_unit = serializers.CharField(required=False, allow_blank=True, default="")
-    period_id = serializers.IntegerField(required=False, allow_null=True)
-    limit = serializers.IntegerField(required=False, default=5)
-
-
 class KPICalculationResultSerializer(serializers.ModelSerializer):
     kpi_code = serializers.CharField(source="kpi.code", read_only=True)
     kpi_name = serializers.CharField(source="kpi.name", read_only=True)
@@ -316,3 +312,60 @@ class KPICalculationResultSerializer(serializers.ModelSerializer):
             "lineage_info",
             "calculated_at",
         ]
+
+
+class KPIConfigurationVersionSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source="company.name", read_only=True)
+    sub_company_name = serializers.CharField(source="sub_company.name", read_only=True)
+    project_name = serializers.CharField(source="project.name", read_only=True)
+    circle_name = serializers.CharField(source="circle.name", read_only=True)
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True)
+
+    class Meta:
+        model = KPIConfigurationVersion
+        fields = [
+            "id",
+            "version_number",
+            "name",
+            "description",
+            "original_filename",
+            "stored_file_path",
+            "file_hash",
+            "scope_type",
+            "company",
+            "company_name",
+            "sub_company",
+            "sub_company_name",
+            "project",
+            "project_name",
+            "circle",
+            "circle_name",
+            "hierarchy_level",
+            "hierarchy_id",
+            "is_inheritance_allowed",
+            "status",
+            "total_kpis",
+            "activated_kpi_codes",
+            "sheet_names",
+            "column_mappings",
+            "cleaning_rules",
+            "changelog",
+            "created_by_name",
+            "created_at",
+            "activated_at",
+        ]
+        read_only_fields = ["id", "version_number", "created_at", "activated_at", "created_by_name"]
+
+
+class KPIFormulaActivateRequestSerializer(serializers.Serializer):
+    scope_type = serializers.ChoiceField(choices=["ENTERPRISE", "COMPANY", "PROJECT", "CIRCLE"], default="ENTERPRISE")
+    company_id = serializers.IntegerField(required=False, allow_null=True)
+    sub_company_id = serializers.IntegerField(required=False, allow_null=True)
+    project_id = serializers.IntegerField(required=False, allow_null=True)
+    circle_id = serializers.IntegerField(required=False, allow_null=True)
+    hierarchy_level = serializers.CharField(required=False, allow_blank=True, allow_null=True, default="")
+    hierarchy_id = serializers.IntegerField(required=False, allow_null=True)
+    is_inheritance_allowed = serializers.BooleanField(required=False, default=True)
+    changelog = serializers.CharField(required=False, allow_blank=True, default="")
+    approved_kpis = serializers.ListField(child=serializers.DictField())
+

@@ -105,23 +105,37 @@ class UploadValidationService:
         project_id: Any = None,
         circle_id: Any = None,
         department_id: Any = None,
+        duplicate_handling: str = "ERROR",
         user=None,
+        auto_commit: bool = False,
     ) -> ImportBatch:
         """
         Main entry point for processing and validating an uploaded Excel workbook.
         Performs full pipeline:
-        1. File validation (.xlsx extension, readability)
+        1. File validation (.xlsx extension, readability, SHA-256 duplicate detection)
         2. Header verification against template column definitions
-        3. Row-by-row type, requirement, and uniqueness validation
-        4. Hierarchy reference validation against live organization database
-        5. User-scoped circle authorization checks
-        6. Staging and error record creation
+        3. Deterministic cleaning and normalization (whitespace, dates, numbers)
+        4. Row-by-row type, requirement, and business-key duplicate validation
+        5. Hierarchy reference validation against live organization database
+        6. User-scoped circle authorization checks
+        7. Staging and error record creation (REVIEW_REQUIRED on errors, auto-commit if valid)
         """
+        from apps.imports.services.data_cleaning_service import DataCleaningService
+
         # Validate extension
         orig_name = uploaded_file.name or ""
         ext = os.path.splitext(orig_name)[1].lower()
         if ext not in [".xlsx", ".xlsm"]:
             raise ValidationError("Invalid file format. Only Excel (.xlsx) workbooks are supported.")
+
+        # Compute file hash
+        file_hash = DataCleaningService.compute_file_hash(uploaded_file)
+        if duplicate_handling == "ERROR":
+            dup_batch = DataCleaningService.detect_duplicate_file(file_hash, template_version_id=version.id)
+            if dup_batch:
+                raise ValidationError(
+                    f"Duplicate file detected: This exact workbook has already been uploaded and processed under Batch '{dup_batch.batch_id}' on {dup_batch.created_at.strftime('%Y-%m-%d %H:%M')}."
+                )
 
         # Generate unique Batch ID
         today_str = datetime.date.today().strftime("%Y%m%d")
@@ -515,16 +529,37 @@ class UploadValidationService:
                 "validation_errors": row_errors,
             })
 
-        # Determine batch status
+        # Duplicate business records detection using unique template columns
+        business_key_cols = [c.name for c in expected_columns if c.is_unique]
+        if not business_key_cols:
+            # Fallback to key reference fields if present
+            for cand in ["bsnl_site_id", "site_id", "action_code", "kpi_code"]:
+                if cand in [c.name.lower() for c in expected_columns]:
+                    business_key_cols = [cand]
+                    break
+
+        staged_rows_data, duplicate_count = DataCleaningService.detect_and_handle_record_duplicates(
+            staged_rows_data,
+            business_key_cols=business_key_cols,
+            duplicate_mode=duplicate_handling,
+            user=user,
+        )
+
+        # Recount valid and error rows after duplicate evaluation
+        valid_rows_count = sum(1 for item in staged_rows_data if item["is_valid"])
+        error_rows_count = sum(1 for item in staged_rows_data if not item["is_valid"] and not item.get("is_skipped"))
+
+        # Determine batch status: REVIEW_REQUIRED on any validation errors, VALIDATED if all valid
         if total_rows_count == 0:
             batch_status = ImportBatch.Status.FAILED
             summary_notes = "Uploaded file contains 0 data rows."
         elif error_rows_count > 0:
-            batch_status = ImportBatch.Status.VALIDATED
-            summary_notes = f"Validation completed with {error_rows_count} invalid rows out of {total_rows_count} total rows."
+            batch_status = ImportBatch.Status.REVIEW_REQUIRED
+            summary_notes = f"Validation completed with {error_rows_count} invalid rows out of {total_rows_count} total rows. Complete batch marked as REVIEW_REQUIRED (no partial publication)."
         else:
             batch_status = ImportBatch.Status.VALIDATED
-            summary_notes = f"All {valid_rows_count} rows passed validation and are ready for import."
+            dup_note = f" ({duplicate_count} duplicates skipped)" if duplicate_count and duplicate_handling == "SKIP" else ""
+            summary_notes = f"All {valid_rows_count} rows passed validation and cleaning{dup_note}."
 
         # 4. Auto-resolve circle & hierarchy context
         final_circle_id = int(circle_id) if circle_id and str(circle_id).isdigit() else None
@@ -633,9 +668,12 @@ class UploadValidationService:
                 original_filename=uploaded_file.name or "uploaded_workbook.xlsx",
                 stored_file_path=stored_path,
                 file_size_bytes=uploaded_file.size,
+                file_hash=file_hash,
                 total_rows=total_rows_count,
                 valid_rows=valid_rows_count,
                 error_rows=error_rows_count,
+                duplicate_rows_count=duplicate_count,
+                duplicate_handling=duplicate_handling,
                 status=batch_status,
                 summary_notes=summary_notes,
             )
@@ -678,12 +716,27 @@ class UploadValidationService:
                     "total_rows": total_rows_count,
                     "valid_rows": valid_rows_count,
                     "error_rows": error_rows_count,
+                    "duplicate_rows": duplicate_count,
+                    "duplicate_handling": duplicate_handling,
                     "status": batch_status,
                     "circle_id": final_circle_id,
                     "company_id": final_company_id,
                 },
                 performed_by=user,
             )
+
+            # Auto-commit 100% valid batches to PostgreSQL when requested or configured
+            if auto_commit and batch_status == ImportBatch.Status.VALIDATED and error_rows_count == 0 and valid_rows_count > 0:
+                try:
+                    from apps.imports.services.import_execution_service import ImportExecutionService
+                    commit_out = ImportExecutionService.commit_batch(batch, user=user)
+                    batch.auto_committed = True
+                    batch.status = ImportBatch.Status.COMPLETED
+                    batch.summary_notes = f"All {valid_rows_count} records cleanly validated, auto-committed, and stored in PostgreSQL."
+                    batch.save(update_fields=["auto_committed", "status", "summary_notes"])
+                except Exception as commit_ex:
+                    batch.summary_notes += f" Auto-commit notice: {str(commit_ex)}"
+                    batch.save(update_fields=["summary_notes"])
 
         # 6. KPI Execution Handling
         target_kpi = None
@@ -692,7 +745,39 @@ class UploadValidationService:
             target_kpi = KPIDefinition.objects.filter(id=int(kpi_id), is_active=True).first()
 
         if target_kpi:
-            batch.applied_kpi = target_kpi
+            # Enforce hierarchy scope resolution: ensure KPI applies to this batch's node
+            if final_circle_id:
+                node_lvl, node_id = "CIRCLE", final_circle_id
+            elif getattr(batch, "project_id", None):
+                node_lvl, node_id = "PROJECT", batch.project_id
+            elif final_company_id:
+                node_lvl, node_id = "MAIN_COMPANY", final_company_id
+            else:
+                node_lvl, node_id = "ENTERPRISE", 1
+
+            from apps.kpi.services.kpi_engine_service import KPIEngineService
+            resolved_kpi = KPIEngineService.resolve_kpi_for_scope(
+                kpi_code=target_kpi.code,
+                hierarchy_level=node_lvl,
+                hierarchy_id=node_id,
+            )
+
+            if not resolved_kpi:
+                batch.kpi_execution_status = "COMPATIBILITY_ERROR"
+                batch.kpi_result_summary = {
+                    "status": "COMPATIBILITY_ERROR",
+                    "kpi_id": target_kpi.id,
+                    "kpi_code": target_kpi.code,
+                    "kpi_name": target_kpi.name,
+                    "message": f"KPI '{target_kpi.code}' is not authorized or scoped for hierarchy node {node_lvl}:{node_id}.",
+                }
+                batch.save(update_fields=["kpi_execution_status", "kpi_result_summary"])
+                target_kpi = None
+            else:
+                target_kpi = resolved_kpi
+                batch.applied_kpi = target_kpi
+
+        if target_kpi:
             # Compatibility check: ensure all required parameters and filters are present in expected template columns
             version_col_names = {c.name.strip().upper() for c in expected_columns} | {c.display_label.strip().upper() for c in expected_columns}
             missing_cols = []

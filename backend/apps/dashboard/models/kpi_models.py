@@ -25,7 +25,7 @@ class ReportingPeriod(models.Model):
 
 class KPI(models.Model):
     id = models.BigAutoField(primary_key=True)
-    code = models.CharField(unique=True, max_length=20)
+    code = models.CharField(unique=True, max_length=50)
     name = models.CharField(max_length=200)
     definition = models.TextField(blank=True, default="")
     calculation_formula = models.TextField(blank=True, default="")

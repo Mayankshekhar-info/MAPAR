@@ -6,7 +6,7 @@ Provides authoritative policy evaluation for:
 - Effective permissions and accessible navigation modules
 """
 
-from typing import List, Optional, Set
+from typing import Any, List, Optional, Set
 from django.db.models import Q
 
 

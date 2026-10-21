@@ -46,6 +46,7 @@ export function useUploadBatchFile() {
       hierarchyScope,
       periodConfig,
       kpiId,
+      duplicateHandling,
     }: {
       file: File;
       templateId: number;
@@ -65,6 +66,7 @@ export function useUploadBatchFile() {
         endDate?: string | null;
       };
       kpiId?: number | null;
+      duplicateHandling?: string;
     }) =>
       uploadsService.uploadBatchFile(
         file,
@@ -73,7 +75,8 @@ export function useUploadBatchFile() {
         reportingPeriodId,
         hierarchyScope,
         periodConfig,
-        kpiId
+        kpiId,
+        duplicateHandling
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["uploads", "batches"] });

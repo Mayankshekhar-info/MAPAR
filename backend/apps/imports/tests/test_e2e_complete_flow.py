@@ -50,63 +50,64 @@ class EndToEndUploadCockpitSlideFlowTestCase(TestCase):
     def setUpClass(cls):
         super().setUpClass()
         # Ensure unmanaged dashboard tables exist in sqlite test db
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS organization_reportingperiod (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name VARCHAR(100) UNIQUE,
-                    period_type VARCHAR(20),
-                    start_date DATE,
-                    end_date DATE,
-                    freeze_at DATETIME,
-                    is_frozen BOOLEAN DEFAULT 0,
-                    is_current BOOLEAN DEFAULT 0,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS kpis_kpi (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    code VARCHAR(20) UNIQUE,
-                    name VARCHAR(200),
-                    definition TEXT DEFAULT '',
-                    calculation_formula TEXT DEFAULT '',
-                    unit VARCHAR(50) DEFAULT '',
-                    direction VARCHAR(20) DEFAULT 'HIGHER_BETTER',
-                    frequency VARCHAR(20) DEFAULT 'MONTHLY',
-                    risk_category VARCHAR(100) DEFAULT '',
-                    priority VARCHAR(20) DEFAULT 'MEDIUM',
-                    default_owner VARCHAR(100) DEFAULT '',
-                    is_executive BOOLEAN DEFAULT 0,
-                    is_active BOOLEAN DEFAULT 1,
-                    display_order INTEGER DEFAULT 0,
-                    domain_id INTEGER,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS kpis_kpivalue (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    kpi_id INTEGER,
-                    circle_id INTEGER,
-                    period_id INTEGER,
-                    actual_value NUMERIC(15, 2),
-                    target_value NUMERIC(15, 2),
-                    previous_value NUMERIC(15, 2),
-                    numerator_value NUMERIC(15, 2),
-                    denominator_value NUMERIC(15, 2),
-                    variance_to_target NUMERIC(15, 2),
-                    variance_percentage NUMERIC(8, 2),
-                    rag_status VARCHAR(20) DEFAULT 'GREEN',
-                    trend VARCHAR(20) DEFAULT 'FLAT',
-                    notes TEXT DEFAULT '',
-                    entered_by_id INTEGER,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE (kpi_id, circle_id, period_id)
-                );
-            """)
+        if connection.vendor == "sqlite":
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS organization_reportingperiod (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name VARCHAR(100) UNIQUE,
+                        period_type VARCHAR(20),
+                        start_date DATE,
+                        end_date DATE,
+                        freeze_at DATETIME,
+                        is_frozen BOOLEAN DEFAULT 0,
+                        is_current BOOLEAN DEFAULT 0,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS kpis_kpi (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        code VARCHAR(20) UNIQUE,
+                        name VARCHAR(200),
+                        definition TEXT DEFAULT '',
+                        calculation_formula TEXT DEFAULT '',
+                        unit VARCHAR(50) DEFAULT '',
+                        direction VARCHAR(20) DEFAULT 'HIGHER_BETTER',
+                        frequency VARCHAR(20) DEFAULT 'MONTHLY',
+                        risk_category VARCHAR(100) DEFAULT '',
+                        priority VARCHAR(20) DEFAULT 'MEDIUM',
+                        default_owner VARCHAR(100) DEFAULT '',
+                        is_executive BOOLEAN DEFAULT 0,
+                        is_active BOOLEAN DEFAULT 1,
+                        display_order INTEGER DEFAULT 0,
+                        domain_id INTEGER,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    );
+                """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS kpis_kpivalue (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        kpi_id INTEGER,
+                        circle_id INTEGER,
+                        period_id INTEGER,
+                        actual_value NUMERIC(15, 2),
+                        target_value NUMERIC(15, 2),
+                        previous_value NUMERIC(15, 2),
+                        numerator_value NUMERIC(15, 2),
+                        denominator_value NUMERIC(15, 2),
+                        variance_to_target NUMERIC(15, 2),
+                        variance_percentage NUMERIC(8, 2),
+                        rag_status VARCHAR(20) DEFAULT 'GREEN',
+                        trend VARCHAR(20) DEFAULT 'FLAT',
+                        notes TEXT DEFAULT '',
+                        entered_by_id INTEGER,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE (kpi_id, circle_id, period_id)
+                    );
+                """)
 
     def setUp(self):
         # 1. Setup multi-tier organization hierarchy

@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 from pathlib import Path
 
 # Add backend directory to sys.path
@@ -13,14 +14,26 @@ from decimal import Decimal
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.development")
 django.setup()
 
-
 from django.db import connection
 from apps.identity.models import User
 from apps.organization.models import MainCompany, SubCompany, Project, Circle, Domain
 from apps.dashboard.models import ReportingPeriod, KPI, KPIValue
+from apps.authorization.models import (
+    AccessModule,
+    AccessPermissionAction,
+    AccessPermission,
+    AccessRole,
+    AccessRolePermission,
+    AccessUserRole,
+)
 
-def seed_db():
-    print("Ensuring unmanaged tables exist in PostgreSQL...")
+
+def ensure_unmanaged_tables():
+    """
+    Ensure the externally managed / legacy cockpit tables exist in PostgreSQL
+    with correct constraints, foreign keys, and indexes.
+    """
+    print("Ensuring unmanaged legacy tables and indexes exist in PostgreSQL...")
     with connection.cursor() as cursor:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS organization_reportingperiod (
@@ -34,11 +47,13 @@ def seed_db():
                 is_current BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE INDEX IF NOT EXISTS idx_reportingperiod_current ON organization_reportingperiod(is_current);
+            CREATE INDEX IF NOT EXISTS idx_reportingperiod_dates ON organization_reportingperiod(start_date, end_date);
         """)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS kpis_kpi (
                 id BIGSERIAL PRIMARY KEY,
-                code VARCHAR(20) UNIQUE NOT NULL,
+                code VARCHAR(50) UNIQUE NOT NULL,
                 name VARCHAR(200) NOT NULL,
                 definition TEXT DEFAULT '',
                 calculation_formula TEXT DEFAULT '',
@@ -55,6 +70,9 @@ def seed_db():
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE INDEX IF NOT EXISTS idx_kpi_code ON kpis_kpi(code);
+            CREATE INDEX IF NOT EXISTS idx_kpi_domain ON kpis_kpi(domain_id);
+            CREATE INDEX IF NOT EXISTS idx_kpi_active ON kpis_kpi(is_active);
         """)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS kpis_kpivalue (
@@ -77,6 +95,8 @@ def seed_db():
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE (kpi_id, circle_id, period_id)
             );
+            CREATE INDEX IF NOT EXISTS idx_kpivalue_circle_period ON kpis_kpivalue(circle_id, period_id);
+            CREATE INDEX IF NOT EXISTS idx_kpivalue_rag ON kpis_kpivalue(rag_status);
         """)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS governance_issue (
@@ -102,6 +122,8 @@ def seed_db():
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE INDEX IF NOT EXISTS idx_gov_issue_circle ON governance_issue(circle_id);
+            CREATE INDEX IF NOT EXISTS idx_gov_issue_status ON governance_issue(status);
         """)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS governance_actionitem (
@@ -135,9 +157,25 @@ def seed_db():
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE INDEX IF NOT EXISTS idx_gov_action_circle ON governance_actionitem(circle_id);
+            CREATE INDEX IF NOT EXISTS idx_gov_action_status ON governance_actionitem(status);
         """)
 
-    print("Creating superuser...")
+
+def seed_master_data():
+    """
+    Seed required baseline master data:
+    - Super Administrator account
+    - Baseline enterprise hierarchy (MainCompany, SubCompany, Project, Circles, Domains)
+    - Active and standard reporting periods
+    - Access modules, actions, and permissions
+    - Enterprise roles and role permissions
+    - Role binding for Super Administrator
+    """
+    ensure_unmanaged_tables()
+
+    print("Provisioning system administrator...")
+    admin_password = os.environ.get("INITIAL_ADMIN_PASSWORD", "admin123")
     admin, created = User.objects.get_or_create(
         username="admin",
         defaults={
@@ -150,11 +188,14 @@ def seed_db():
             "last_name": "Admin",
         }
     )
-    admin.set_password("admin123")
-    admin.save()
-    print(f"Superuser {'created' if created else 'updated'}: username='admin', password='admin123'")
+    if created:
+        admin.set_password(admin_password)
+        admin.save()
+        print("Initial Super Administrator account created successfully.")
+    else:
+        print("Super Administrator account already exists.")
 
-    print("Creating organization hierarchy...")
+    print("Seeding base organization hierarchy...")
     mc, _ = MainCompany.objects.get_or_create(
         code="MAPAR_ENT",
         defaults={"name": "MAPAR Enterprise", "description": "Primary Corporate Enterprise"}
@@ -193,7 +234,7 @@ def seed_db():
         )
         domains.append(dom)
 
-    print("Creating reporting periods...")
+    print("Seeding standard reporting periods...")
     periods_data = [
         ("Jul-26", "MONTHLY", datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), True, False),
         ("Aug-26", "MONTHLY", datetime.date(2026, 8, 1), datetime.date(2026, 8, 31), True, False),
@@ -212,7 +253,115 @@ def seed_db():
             }
         )
 
-    print("Creating sample KPI and values...")
+    print("Seeding authorization modules, actions, and permissions...")
+    actions_meta = [
+        ("view", "View", "Read-only access to records and views", 1),
+        ("create", "Create", "Permission to add new records", 2),
+        ("edit", "Edit", "Permission to modify existing records", 3),
+        ("delete", "Delete", "Permission to delete or deactivate records", 4),
+        ("export", "Export", "Permission to export operational data to CSV/Excel", 5),
+        ("manage", "Manage", "Full administrative control of module", 6),
+    ]
+    action_objs = {}
+    for code, name, desc, sort in actions_meta:
+        act, _ = AccessPermissionAction.objects.get_or_create(
+            code=code,
+            defaults={"name": name, "description": desc, "sort_order": sort, "is_active": True}
+        )
+        action_objs[code] = act
+
+    modules_meta = [
+        ("management", "Management Cockpit", "Executive scorecard & cross-domain operational intelligence", 1),
+        ("slides", "Slide View", "8-tier hierarchy drilldown & deck view", 2),
+        ("organization", "Organization Hierarchy", "Corporate entities, circles, domains, and departments", 3),
+        ("uploads", "Uploads & Imports", "Data templates, validation engines, and ingestion history", 4),
+        ("kpi", "Universal KPI Registry", "Dynamic KPI definitions, formulas, and evaluation rules", 5),
+        ("users", "User Administration", "Enterprise user accounts and lifecycle management", 6),
+        ("admin", "System Administration", "Security roles, permission matrices, and access scopes", 7),
+    ]
+    module_objs = {}
+    for code, name, desc, sort in modules_meta:
+        mod, _ = AccessModule.objects.get_or_create(
+            code=code,
+            defaults={"name": name, "description": desc, "sort_order": sort, "is_active": True}
+        )
+        module_objs[code] = mod
+
+    permissions_map = {}
+    for mod_code, mod_obj in module_objs.items():
+        if mod_code in ["management", "slides"]:
+            allowed_actions = ["view", "export"]
+        elif mod_code in ["organization", "kpi", "users", "admin"]:
+            allowed_actions = ["view", "create", "edit", "delete", "export"]
+        elif mod_code == "uploads":
+            allowed_actions = ["view", "create", "edit", "delete", "export", "manage"]
+        else:
+            allowed_actions = ["view"]
+
+        for act_code in allowed_actions:
+            perm_code = f"{mod_code}.{act_code}"
+            perm, _ = AccessPermission.objects.get_or_create(
+                code=perm_code,
+                defaults={
+                    "name": f"{action_objs[act_code].name} {mod_obj.name}",
+                    "module": mod_obj,
+                    "action": action_objs[act_code],
+                    "risk_level": "HIGH" if act_code in ["delete", "manage"] else "LOW",
+                    "is_active": True,
+                }
+            )
+            permissions_map[perm_code] = perm
+
+    print("Seeding baseline enterprise roles...")
+    roles_meta = [
+        ("SUPER_ADMIN", "Super Administrator", "Full unrestricted enterprise access to all platform capabilities", "SYSTEM", "CRITICAL"),
+        ("EXECUTIVE", "Executive Leadership", "Cross-tier performance visibility, reporting, and operational export rights", "SYSTEM", "MEDIUM"),
+        ("REGIONAL_DIRECTOR", "Regional Director", "Performance review and upload tracking across regional circle boundaries", "SYSTEM", "MEDIUM"),
+        ("CIRCLE_HEAD", "Circle Operations Head", "Operational data monitoring, imports, and KPI tracking within circle scope", "SYSTEM", "MEDIUM"),
+        ("OPERATIONS_LEAD", "Operations Team Lead", "Operational data ingestion and metric review", "CUSTOM", "LOW"),
+        ("VIEWER", "Enterprise Viewer", "Read-only access to operational dashboards and slide decks", "SYSTEM", "LOW"),
+    ]
+    created_roles = {}
+    for code, name, desc, r_type, risk in roles_meta:
+        role, _ = AccessRole.objects.get_or_create(
+            code=code,
+            defaults={
+                "name": name,
+                "description": desc,
+                "role_type": r_type,
+                "risk_level": risk,
+                "status": "ACTIVE",
+            }
+        )
+        created_roles[code] = role
+
+    all_perm_objs = list(permissions_map.values())
+    for p in all_perm_objs:
+        AccessRolePermission.objects.get_or_create(role=created_roles["SUPER_ADMIN"], permission=p, defaults={"is_denied": False})
+
+    for p in all_perm_objs:
+        if p.action and p.action.code in ["view", "export"]:
+            AccessRolePermission.objects.get_or_create(role=created_roles["EXECUTIVE"], permission=p, defaults={"is_denied": False})
+
+    for p in all_perm_objs:
+        if (p.action and p.action.code in ["view", "export"]) or p.code in ["uploads.create", "uploads.edit", "kpi.view"]:
+            AccessRolePermission.objects.get_or_create(role=created_roles["CIRCLE_HEAD"], permission=p, defaults={"is_denied": False})
+
+    for p in all_perm_objs:
+        if p.code in ["management.view", "slides.view", "organization.view"]:
+            AccessRolePermission.objects.get_or_create(role=created_roles["VIEWER"], permission=p, defaults={"is_denied": False})
+
+    AccessUserRole.objects.get_or_create(user=admin, role=created_roles["SUPER_ADMIN"], defaults={"is_primary": True})
+    print("Master data seeded successfully.")
+    return circles, domains
+
+
+def seed_sample_data(circles, domains):
+    """
+    Development/Testing only: Seeds sample KPI metrics.
+    NEVER to be run in production environments.
+    """
+    print("Seeding sample development KPI definition and operational values...")
     kpi, _ = KPI.objects.get_or_create(
         code="KPI_SITES_ON_AIR",
         defaults={
@@ -238,8 +387,27 @@ def seed_db():
                     "rag_status": "AMBER",
                 }
             )
+    print("Sample development KPI data seeded.")
 
-    print("Database seeding completed successfully!")
+
+def main():
+    parser = argparse.ArgumentParser(description="Seed MAPAR database master data.")
+    parser.add_argument(
+        "--with-sample-data",
+        action="store_true",
+        help="Seed sample KPI operational records for local development/testing only.",
+    )
+    args = parser.parse_args()
+
+    circles, domains = seed_master_data()
+
+    if args.with_sample_data:
+        env = os.environ.get("MAPAR_ENV", "development").lower()
+        if env == "production":
+            print("ERROR: Sample operational data cannot be seeded in a PRODUCTION environment.")
+            sys.exit(1)
+        seed_sample_data(circles, domains)
+
 
 if __name__ == "__main__":
-    seed_db()
+    main()

@@ -125,57 +125,6 @@ export interface KPIComparisonRule {
   calculation_status?: string;
   error_message?: string;
   status_label?: string;
-
-  // Formula Engine Configuration
-  formula_expression?: string;
-  formula_name?: string;
-  input_column?: string;
-  input_unit?: string;
-  output_column_name?: string;
-  output_unit?: string;
-  decimal_precision?: number;
-  constants?: Record<string, number>;
-  dataset_id?: number | null;
-  dataset_name?: string;
-}
-
-export interface KPIFormulaConfig {
-  id?: string;
-  name?: string;
-  dataset_id?: number | null;
-  dataset_name?: string;
-  input_column?: string;
-  input_unit?: string;
-  formula_expression?: string;
-  output_column_name?: string;
-  output_unit?: string;
-  decimal_precision?: number;
-  rounding?: string;
-  constants?: Record<string, number>;
-  aggregation?: "SUM" | "AVG" | "COUNT" | "COUNT_DISTINCT" | "MIN" | "MAX" | "LATEST";
-  is_active?: boolean;
-}
-
-export interface KPIFormulaPreviewSample {
-  row_number: number;
-  inputs: Record<string, any>;
-  calculated_value: number | null;
-  output_unit?: string;
-  status: string;
-  error?: string | null;
-}
-
-export interface KPIFormulaPreviewResponse {
-  is_valid: boolean;
-  error?: string | null;
-  explanation?: string;
-  detected_variables?: string[];
-  referenced_columns?: string[];
-  has_actual_data: boolean;
-  samples: KPIFormulaPreviewSample[];
-  template_name?: string;
-  output_unit?: string;
-  decimal_precision?: number;
 }
 
 export interface KPIComparisonItem {
@@ -450,3 +399,67 @@ export interface KPIRefinedRecordsResponse {
   records: Array<Record<string, any>>;
   applied_filters: Array<{ field: string; operator: string; value: string }>;
 }
+
+export interface KPIFormulaPreviewRow {
+  row_index: number;
+  is_valid: boolean;
+  errors: string[];
+  warnings: string[];
+  code: string;
+  name: string;
+  description: string;
+  domain?: string;
+  hierarchy_level: string;
+  calculation_type: string;
+  formula_expression: string;
+  aggregation_method: string;
+  unit: string;
+  direction: string;
+  target_value?: number | null;
+  threshold_green?: number | null;
+  threshold_amber?: number | null;
+  source_dataset?: string;
+  natural_language_rule?: string;
+  cleaning_rules?: string;
+  company_code?: string;
+  project_code?: string;
+  raw_values?: Record<string, any>;
+}
+
+export interface KPIFormulaParseResponse {
+  success: boolean;
+  file_hash: string;
+  original_filename: string;
+  sheet_names: string[];
+  selected_sheet: string;
+  detected_mapping: Record<string, string>;
+  available_headers: string[];
+  total_rows: number;
+  valid_count: number;
+  error_count: number;
+  preview_rows: KPIFormulaPreviewRow[];
+}
+
+export interface KPIConfigVersion {
+  id: number;
+  version_number: number;
+  scope_type: "ENTERPRISE" | "COMPANY" | "PROJECT" | "CIRCLE";
+  company_name?: string | null;
+  sub_company_name?: string | null;
+  project_name?: string | null;
+  circle_name?: string | null;
+  hierarchy_level?: string | null;
+  hierarchy_id?: number | null;
+  is_inheritance_allowed?: boolean;
+  status: "DRAFT" | "PENDING_APPROVAL" | "ACTIVE" | "SUPERSEDED" | "ARCHIVED";
+  total_kpis: number;
+  file_hash: string;
+  original_filename: string;
+  changelog: string;
+  created_by_name?: string | null;
+  approved_by_name?: string | null;
+  activated_at?: string | null;
+  created_at: string;
+  activated_kpi_codes: string[];
+}
+

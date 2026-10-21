@@ -3,18 +3,26 @@ REST API Views for Universal KPI Module.
 Coordinates authentication, authorization, validation, services, and response formatting.
 """
 
+from django.http import HttpResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.core.exceptions import ValidationError
-from django.db import models
 
 from apps.kpi.selectors.kpi_selectors import KPISelectors
 from apps.kpi.services.kpi_definition_service import KPIDefinitionService
 from apps.kpi.services.kpi_engine_service import KPIEngineService
 from apps.kpi.services.formula_evaluator import SafeFormulaEvaluator
-from apps.kpi.models import KPIDefinition, KPICalculationResult, KPICalculationAuditLog
+from apps.kpi.services.kpi_formula_excel_service import KPIFormulaExcelService
+from apps.kpi.services.kpi_sync_service import KPISyncService
+from apps.kpi.models import (
+    KPIDefinition,
+    KPICalculationResult,
+    KPICalculationAuditLog,
+    KPIConfigurationVersion,
+)
 from apps.dashboard.models import ReportingPeriod
 from apps.imports.models import ImportStagedRow
 from apps.kpi.api.serializers import (
@@ -22,8 +30,9 @@ from apps.kpi.api.serializers import (
     KPICalculateRequestSerializer,
     KPITestLogicRequestSerializer,
     KPIFormulaValidationSerializer,
-    KPIFormulaPreviewSerializer,
     KPICalculationResultSerializer,
+    KPIConfigurationVersionSerializer,
+    KPIFormulaActivateRequestSerializer,
 )
 from apps.kpi.permissions.kpi_permissions import HasKPIPermission
 from common.permissions.authorization import AuthorizationService
@@ -399,110 +408,165 @@ class KPITestLogicView(APIView):
             return Response({"success": False, "error": str(ex), "message": str(ex)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class KPIPreviewFormulaView(APIView):
-    permission_classes = [IsAuthenticated]
+class KPIFormulaParseView(APIView):
+    """
+    POST /api/v1/kpi/configuration/parse/
+    Parses and previews an uploaded KPI formula workbook without activating.
+    Identifies sheets, columns, validates required fields, formulas (AST sandbox), and duplicate codes.
+    """
+    permission_classes = [IsAuthenticated, HasKPIPermission]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def post(self, request):
-        serializer = KPIFormulaPreviewSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        uploaded_file = request.FILES.get("file")
+        if not uploaded_file:
+            return Response({"success": False, "message": "No Excel file uploaded."}, status=status.HTTP_400_BAD_REQUEST)
 
-        data = serializer.validated_data
-        formula = data["formula"]
-        dataset_id = data.get("dataset_id")
-        input_column = data.get("input_column", "")
-        constants = data.get("constants") or {}
-        decimal_precision = data.get("decimal_precision", 2)
-        input_unit = data.get("input_unit", "")
-        output_unit = data.get("output_unit", "")
-        limit = min(data.get("limit", 5), 20)
+        target_sheet = request.data.get("target_sheet")
+        custom_mapping = None
+        mapping_raw = request.data.get("custom_mapping")
+        if mapping_raw:
+            import json
+            try:
+                custom_mapping = json.loads(mapping_raw) if isinstance(mapping_raw, str) else mapping_raw
+            except Exception:
+                pass
 
-        from apps.imports.models import UploadTemplate, ImportBatch, ImportStagedRow
-        from apps.kpi.services.formula_calculation_service import KPIFormulaCalculationService
+        try:
+            preview_data = KPIFormulaExcelService.parse_and_preview_workbook(
+                uploaded_file=uploaded_file,
+                custom_mapping=custom_mapping,
+                target_sheet=target_sheet,
+            )
+            return Response({"success": True, **preview_data})
+        except ValidationError as e:
+            return Response({"success": False, "message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as ex:
+            return Response({"success": False, "message": f"Workbook inspection failed: {str(ex)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        available_columns = []
-        template = None
-        if dataset_id:
-            template = UploadTemplate.objects.filter(id=dataset_id).first()
-            if template:
-                active_ver = template.versions.filter(is_active=True).first() or template.versions.order_by("-version_number").first()
-                if active_ver:
-                    available_columns = list(active_ver.columns.values_list("name", flat=True))
 
-        val_res = KPIFormulaCalculationService.validate_formula(
-            formula=formula,
-            available_columns=available_columns if available_columns else None,
-            constants=constants,
+class KPIFormulaActivateView(APIView):
+    """
+    POST /api/v1/kpi/configuration/activate/
+    Stores and approves the validated KPI configuration in PostgreSQL with immutable version history.
+    Supports Enterprise defaults, Company-level, and Project-specific overrides.
+    """
+    permission_classes = [IsAuthenticated, HasKPIPermission]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def post(self, request):
+        uploaded_file = request.FILES.get("file")
+
+        approved_kpis = request.data.get("approved_kpis")
+        if isinstance(approved_kpis, str):
+            import json
+            try:
+                approved_kpis = json.loads(approved_kpis)
+            except Exception:
+                approved_kpis = []
+
+        scope_type = request.data.get("scope_type", "ENTERPRISE")
+        company_id = request.data.get("company_id")
+        project_id = request.data.get("project_id")
+        circle_id = request.data.get("circle_id")
+        hierarchy_level = request.data.get("hierarchy_level")
+        hierarchy_id = request.data.get("hierarchy_id")
+        is_inheritance_raw = request.data.get("is_inheritance_allowed", True)
+        changelog = request.data.get("changelog", "")
+
+        company_id_int = int(company_id) if company_id and str(company_id).isdigit() else None
+        project_id_int = int(project_id) if project_id and str(project_id).isdigit() else None
+        circle_id_int = int(circle_id) if circle_id and str(circle_id).isdigit() else None
+        hierarchy_id_int = int(hierarchy_id) if hierarchy_id and str(hierarchy_id).isdigit() else None
+        is_inheritance_allowed = str(is_inheritance_raw).lower() not in ["false", "0", "no"]
+
+        if not approved_kpis:
+            return Response({"success": False, "message": "No approved KPI definitions provided for activation."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            result = KPIFormulaExcelService.activate_configuration(
+                uploaded_file=uploaded_file,
+                approved_kpis=approved_kpis,
+                scope_type=scope_type,
+                company_id=company_id_int,
+                project_id=project_id_int,
+                circle_id=circle_id_int,
+                hierarchy_level=hierarchy_level,
+                hierarchy_id=hierarchy_id_int,
+                changelog=changelog,
+                is_inheritance_allowed=is_inheritance_allowed,
+                user=request.user,
+            )
+            return Response(result, status=status.HTTP_201_CREATED)
+        except ValidationError as e:
+            msg = e.message if hasattr(e, "message") else str(e)
+            return Response({"success": False, "message": msg}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as ex:
+            return Response({"success": False, "message": f"Configuration activation failed: {str(ex)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class KPIConfigVersionsView(APIView):
+    """
+    GET /api/v1/kpi/configuration/versions/
+    Returns history of approved KPI formula configuration versions.
+    """
+    permission_classes = [IsAuthenticated, HasKPIPermission]
+
+    def get(self, request):
+        scope_type = request.query_params.get("scope_type")
+        company_id = request.query_params.get("company_id")
+        project_id = request.query_params.get("project_id")
+        circle_id = request.query_params.get("circle_id")
+
+        qs = KPIConfigurationVersion.objects.select_related("company", "project", "circle", "created_by").all()
+        if scope_type:
+            qs = qs.filter(scope_type=scope_type.upper())
+        if company_id and str(company_id).isdigit():
+            qs = qs.filter(company_id=int(company_id))
+        if project_id and str(project_id).isdigit():
+            qs = qs.filter(project_id=int(project_id))
+        if circle_id and str(circle_id).isdigit():
+            qs = qs.filter(circle_id=int(circle_id))
+
+        serializer = KPIConfigurationVersionSerializer(qs.order_by("-version_number", "-created_at")[:50], many=True)
+        return Response({"success": True, "versions": serializer.data})
+
+
+class KPIFormulaTemplateView(APIView):
+    """
+    GET /api/v1/kpi/configuration/template/
+    Generates and downloads the official starter KPI Formula Excel template workbook.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        buffer = KPIFormulaExcelService.generate_starter_excel_template()
+        filename = "MAPAR_KPI_Formula_Configuration_Template.xlsx"
+
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["Access-Control-Expose-Headers"] = "Content-Disposition"
+        return response
 
-        if not val_res["is_valid"]:
+
+class KPISyncCanonicalView(APIView):
+    """
+    POST /api/v1/kpi/sync-canonical/
+    Admin endpoint to initialize/sync canonical operational datasets and universal KPIs.
+    """
+    permission_classes = [IsAuthenticated, HasKPIPermission]
+
+    def post(self, request):
+        try:
+            summary = KPISyncService.run_full_sync()
             return Response({
-                "is_valid": False,
-                "error": val_res.get("error", "Invalid formula syntax"),
-                "detected_variables": val_res.get("detected_variables", []),
-                "referenced_columns": val_res.get("referenced_columns", []),
-                "has_actual_data": False,
-                "samples": [],
-            }, status=status.HTTP_200_OK)
-
-        detected_vars = val_res.get("detected_variables", [])
-        const_desc = ", ".join([f"{k} = {v}" for k, v in constants.items()]) if constants else "None"
-        explanation = (
-            f"Formula evaluates `{formula}` using columns {detected_vars}. "
-            f"Constants: {const_desc}. "
-            f"Result rounded to {decimal_precision} decimal places ({output_unit or 'units'})."
-        )
-
-        samples = []
-        has_actual_data = False
-        if template:
-            batch_qs = ImportBatch.objects.filter(
-                template_version__template=template,
-                status=ImportBatch.Status.COMPLETED if hasattr(ImportBatch, "Status") else "COMPLETED",
-            ).order_by("-created_at")
-            latest_batch = batch_qs.first()
-            if latest_batch:
-                staged_rows = list(
-                    ImportStagedRow.objects.filter(batch=latest_batch, is_valid=True)
-                    .order_by("row_index")[:limit]
-                )
-                if staged_rows:
-                    has_actual_data = True
-                    for sr in staged_rows:
-                        calc_val, status_code, err_msg = KPIFormulaCalculationService.evaluate_row(
-                            row=sr,
-                            formula=formula,
-                            input_column=input_column,
-                            constants=constants,
-                            decimal_precision=decimal_precision,
-                        )
-                        input_vals = {}
-                        if sr.raw_data:
-                            for col in detected_vars:
-                                if col in sr.raw_data:
-                                    input_vals[col] = sr.raw_data[col]
-                            if input_column and input_column in sr.raw_data and input_column not in input_vals:
-                                input_vals[input_column] = sr.raw_data[input_column]
-
-                        samples.append({
-                            "row_number": getattr(sr, "row_index", getattr(sr, "row_number", 1)),
-                            "inputs": input_vals,
-                            "calculated_value": float(calc_val) if calc_val is not None else None,
-                            "output_unit": output_unit,
-                            "status": status_code,
-                            "error": err_msg,
-                        })
-
-        return Response({
-            "is_valid": True,
-            "error": None,
-            "explanation": explanation,
-            "detected_variables": detected_vars,
-            "referenced_columns": val_res.get("referenced_columns", []),
-            "has_actual_data": has_actual_data,
-            "samples": samples,
-            "template_name": template.name if template else None,
-            "output_unit": output_unit,
-            "decimal_precision": decimal_precision,
-        }, status=status.HTTP_200_OK)
+                "success": True,
+                "message": f"Canonical synchronization complete: {summary.get('kpis_synced', 0)} KPIs and {summary.get('values_synced', 0)} values synchronized.",
+                **summary,
+            })
+        except Exception as ex:
+            return Response({"success": False, "message": f"Sync failed: {str(ex)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

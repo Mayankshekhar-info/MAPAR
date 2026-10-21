@@ -238,6 +238,9 @@ export const KPIDashboardCard: React.FC<KPIDashboardCardProps> = ({
 
   // Format Gap text (Section 8 & 10 layout spec)
   const formatGapText = () => {
+    if (data.error_message) {
+      return data.error_message;
+    }
     if (isNoData) return "No compatible records in selected period";
     if (varianceVal === null || varianceVal === undefined) return "Gap: Not calculated";
 

@@ -295,6 +295,7 @@ class BatchUploadView(APIView):
         project_id = request.data.get("project_id")
         circle_id = request.data.get("circle_id")
         department_id = request.data.get("department_id")
+        duplicate_handling = request.data.get("duplicate_handling", "ERROR")
 
         if version_id and str(version_id).isdigit():
             version = get_template_version_by_id(int(version_id))
@@ -305,6 +306,12 @@ class BatchUploadView(APIView):
 
         if not version:
             return Response({"success": False, "message": "Template version not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        auto_commit_val = request.data.get("auto_commit", True)
+        if isinstance(auto_commit_val, str):
+            auto_commit = auto_commit_val.strip().lower() in ["true", "1", "yes"]
+        else:
+            auto_commit = bool(auto_commit_val)
 
         try:
             batch = UploadValidationService.process_and_validate_upload(
@@ -321,7 +328,9 @@ class BatchUploadView(APIView):
                 project_id=project_id,
                 circle_id=circle_id,
                 department_id=department_id,
+                duplicate_handling=duplicate_handling,
                 user=request.user,
+                auto_commit=auto_commit,
             )
             serializer = ImportBatchDetailSerializer(batch)
             return Response({"success": True, "batch": serializer.data}, status=status.HTTP_201_CREATED)
@@ -436,6 +445,138 @@ class BatchCommitView(APIView):
             return Response({"success": False, "message": f"Commit failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class BatchRevalidateView(APIView):
+    """
+    POST /api/v1/uploads/batches/<identifier>/revalidate/
+    Re-evaluates a REVIEW_REQUIRED batch after data corrections or duplicate resolution.
+    If all errors are resolved, marks batch as VALIDATED, auto-commits, and triggers KPI recalculation.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, identifier):
+        if not check_can_manage_uploads(request.user):
+            return Response(
+                {"success": False, "message": "Access Denied: You cannot manage batch corrections."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        batch = get_batch_by_identifier(identifier)
+        if batch.status == ImportBatch.Status.COMPLETED:
+            return Response({"success": False, "message": "Batch has already been committed."}, status=status.HTTP_400_BAD_REQUEST)
+
+        corrected_rows = request.data.get("corrected_rows", [])
+        duplicate_handling = request.data.get("duplicate_handling", batch.duplicate_handling or "ERROR")
+
+        from common.database.transactions import atomic_operation
+        with atomic_operation():
+            for correction in corrected_rows:
+                r_idx = correction.get("row_index")
+                new_data = correction.get("raw_data")
+                if r_idx and new_data:
+                    staged_row = batch.staged_rows.filter(row_index=r_idx).first()
+                    if staged_row:
+                        staged_row.raw_data = new_data
+                        staged_row.save(update_fields=["raw_data"])
+
+            expected_columns = list(batch.template_version.columns.all().order_by("column_order", "id"))
+            from apps.imports.services.data_cleaning_service import DataCleaningService
+            from apps.imports.models import ImportValidationError
+            staged_qs = list(batch.staged_rows.all())
+            staged_dicts = [
+                {
+                    "row_index": r.row_index,
+                    "raw_data": r.raw_data,
+                    "is_valid": True,
+                    "validation_errors": [],
+                }
+                for r in staged_qs
+            ]
+
+            batch.validation_errors.all().delete()
+            all_err_objs = []
+            valid_count = 0
+            err_count = 0
+
+            for item in staged_dicts:
+                clean_row, row_errs = DataCleaningService.clean_and_normalize_row(
+                    item["row_index"],
+                    item["raw_data"],
+                    columns=expected_columns,
+                )
+                item["raw_data"] = clean_row
+                item["validation_errors"] = row_errs
+                item["is_valid"] = len(row_errs) == 0
+
+            # Deduplication
+            business_keys = [c.name for c in expected_columns if c.is_unique]
+            staged_dicts, dup_count = DataCleaningService.detect_and_handle_record_duplicates(
+                staged_dicts,
+                business_key_cols=business_keys,
+                duplicate_mode=duplicate_handling,
+                user=request.user,
+            )
+
+            # Update staged rows and persist errors
+            for item in staged_dicts:
+                staged_obj = batch.staged_rows.filter(row_index=item["row_index"]).first()
+                if staged_obj:
+                    staged_obj.raw_data = item["raw_data"]
+                    staged_obj.is_valid = item["is_valid"]
+                    staged_obj.validation_errors = item["validation_errors"]
+                    staged_obj.save(update_fields=["raw_data", "is_valid", "validation_errors"])
+
+                if item["is_valid"]:
+                    valid_count += 1
+                elif not item.get("is_skipped"):
+                    err_count += 1
+
+                for err in item["validation_errors"]:
+                    all_err_objs.append(
+                        ImportValidationError(
+                            batch=batch,
+                            row_index=err["row_index"],
+                            column_name=err["column_name"],
+                            cell_value=err.get("cell_value", ""),
+                            error_message=err["error_message"],
+                            severity=err.get("severity", "ERROR"),
+                        )
+                    )
+
+            if all_err_objs:
+                ImportValidationError.objects.bulk_create(all_err_objs)
+
+            batch.valid_rows = valid_count
+            batch.error_rows = err_count
+            batch.duplicate_rows_count = dup_count
+            batch.duplicate_handling = duplicate_handling
+
+            if err_count > 0:
+                batch.status = ImportBatch.Status.REVIEW_REQUIRED
+                batch.summary_notes = f"Revalidation completed with {err_count} remaining errors. Review required before commit."
+                batch.save(update_fields=["valid_rows", "error_rows", "duplicate_rows_count", "duplicate_handling", "status", "summary_notes", "updated_at"])
+                return Response({
+                    "success": False,
+                    "batch": ImportBatchDetailSerializer(batch).data,
+                    "message": f"Revalidation completed with {err_count} remaining errors. Batch marked as REVIEW_REQUIRED.",
+                }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                batch.status = ImportBatch.Status.VALIDATED
+                batch.summary_notes = f"All {valid_count} rows successfully revalidated and cleaned. Auto-committing."
+                batch.save(update_fields=["valid_rows", "error_rows", "duplicate_rows_count", "duplicate_handling", "status", "summary_notes", "updated_at"])
+
+                # Auto-commit clean batch
+                commit_res = ImportExecutionService.commit_batch(batch, user=request.user)
+                batch.auto_committed = True
+                batch.status = ImportBatch.Status.COMPLETED
+                batch.save(update_fields=["auto_committed", "status"])
+
+                return Response({
+                    "success": True,
+                    "batch": ImportBatchDetailSerializer(batch).data,
+                    "message": f"Batch successfully revalidated, cleaned, and committed with {valid_count} records.",
+                    "commit_result": commit_res,
+                })
+
+
 class TemplateCompatibleKPIsView(APIView):
     """
     GET /api/v1/uploads/templates/<int:template_id>/compatible-kpis/
@@ -531,6 +672,39 @@ class BatchProcessKPIView(APIView):
         if not kpi:
             return Response({"success": False, "message": f"KPI with ID {kpi_id} not found or inactive."}, status=status.HTTP_404_NOT_FOUND)
 
+        # Enforce hierarchy scope resolution: ensure KPI applies to this batch's node
+        batch_circle_id = batch.circle.id if batch.circle else getattr(batch, "circle_id", None)
+        batch_project_id = batch.project.id if getattr(batch, "project", None) else getattr(batch, "project_id", None)
+        batch_company_id = batch.company.id if batch.company else getattr(batch, "company_id", None)
+
+        if batch_circle_id:
+            h_lvl, h_id = "CIRCLE", batch_circle_id
+        elif batch_project_id:
+            h_lvl, h_id = "PROJECT", batch_project_id
+        elif batch_company_id:
+            h_lvl, h_id = "MAIN_COMPANY", batch_company_id
+        else:
+            h_lvl, h_id = "ENTERPRISE", 1
+
+        from apps.kpi.services.kpi_engine_service import KPIEngineService
+        resolved_kpi = KPIEngineService.resolve_kpi_for_scope(kpi.code, h_lvl, h_id)
+        if not resolved_kpi:
+            batch.kpi_execution_status = "COMPATIBILITY_ERROR"
+            batch.kpi_result_summary = {
+                "status": "COMPATIBILITY_ERROR",
+                "kpi_id": kpi.id,
+                "kpi_code": kpi.code,
+                "kpi_name": kpi.name,
+                "message": f"KPI '{kpi.code}' is not authorized or scoped for hierarchy node {h_lvl}:{h_id}.",
+            }
+            batch.save(update_fields=["kpi_execution_status", "kpi_result_summary"])
+            serializer = ImportBatchDetailSerializer(batch)
+            return Response({"success": False, "batch": serializer.data, "message": batch.kpi_result_summary["message"]}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Apply the resolved scoped KPI definition
+        kpi = resolved_kpi
+        batch.applied_kpi = kpi
+
         # Check compatibility
         version_columns = list(UploadTemplateColumn.objects.filter(version=batch.template_version))
         template_cols = {c.name.strip().upper() for c in version_columns} | {
@@ -544,7 +718,6 @@ class BatchProcessKPIView(APIView):
             if f.field_name and f.field_name.strip().upper() not in template_cols:
                 missing_cols.append(f.field_name)
 
-        batch.applied_kpi = kpi
         if missing_cols:
             batch.kpi_execution_status = "COMPATIBILITY_ERROR"
             batch.kpi_result_summary = {

@@ -8,10 +8,10 @@ export default defineConfig({
     preserveSymlinks: true,
   },
   server: {
-    port: 5173,
+    port: 5185,
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8000",
+        target: "http://127.0.0.1:8085",
         changeOrigin: true,
         secure: false,
       },

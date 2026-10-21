@@ -138,7 +138,8 @@ export const uploadsService = {
       startDate?: string | null;
       endDate?: string | null;
     },
-    kpiId?: number | null
+    kpiId?: number | null,
+    duplicateHandling?: string
   ): Promise<ImportBatch> {
     const formData = new FormData();
     formData.append("file", file);
@@ -156,6 +157,7 @@ export const uploadsService = {
     if (periodConfig?.startDate) formData.append("start_date", periodConfig.startDate);
     if (periodConfig?.endDate) formData.append("end_date", periodConfig.endDate);
     if (kpiId) formData.append("kpi_id", String(kpiId));
+    if (duplicateHandling) formData.append("duplicate_handling", duplicateHandling);
 
     const response = await api.post<{ success: boolean; batch: ImportBatch }>(
       "/uploads/batches/upload/",

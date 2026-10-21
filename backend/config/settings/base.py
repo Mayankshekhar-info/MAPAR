@@ -107,11 +107,12 @@ ASGI_APPLICATION = "config.asgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get("POSTGRES_DB", "MAPARV2"),
-        "USER": os.environ.get("POSTGRES_USER", "postgres"),
-        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "admin123"),
-        "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
-        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
+        "NAME": os.environ.get("DB_NAME") or os.environ.get("POSTGRES_DB", "mapar"),
+        "USER": os.environ.get("DB_USER") or os.environ.get("POSTGRES_USER", "postgres"),
+        "PASSWORD": os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD", ""),
+        "HOST": os.environ.get("DB_HOST") or os.environ.get("POSTGRES_HOST", "localhost"),
+        "PORT": os.environ.get("DB_PORT") or os.environ.get("POSTGRES_PORT", "5432"),
+        "CONN_MAX_AGE": int(os.environ.get("DB_CONN_MAX_AGE", 60)),
     }
 }
 
@@ -136,12 +137,16 @@ REST_FRAMEWORK = {
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5185",
+    "http://127.0.0.1:5185",
     "http://localhost:5173",
     "http://localhost:3000",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:3000",
 ]
 CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5185",
+    "http://127.0.0.1:5185",
     "http://localhost:5173",
     "http://localhost:3000",
     "http://127.0.0.1:5173",

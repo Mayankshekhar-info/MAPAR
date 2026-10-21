@@ -167,11 +167,17 @@ class KPISyncService:
 
                 kpi_def, created = KPIDefinition.objects.update_or_create(
                     code=legacy.code,
+                    config_version__isnull=True,
                     defaults={
                         "name": legacy.name,
                         "description": legacy.definition or legacy.name,
                         "domain": legacy.domain,
                         "hierarchy_level": "CIRCLE",
+                        "scope_type": "ENTERPRISE",
+                        "is_inheritance_allowed": True,
+                        "company": None,
+                        "project": None,
+                        "circle": None,
                         "calculation_type": calc_type,
                         "source_dataset": ops_dataset,
                         "formula_expression": cleaned_formula,

@@ -31,7 +31,19 @@ class ImportExecutionService:
         Marks batch as COMPLETED and logs lineage.
         """
         if batch.status == ImportBatch.Status.COMPLETED:
+            if getattr(batch, "auto_committed", False):
+                return {
+                    "batch_id": batch.batch_id,
+                    "status": batch.status,
+                    "records_committed": batch.valid_rows,
+                    "already_committed": True,
+                }
             raise ValidationError("This batch has already been committed.")
+
+        if batch.status == ImportBatch.Status.REVIEW_REQUIRED and batch.error_rows > 0:
+            raise ValidationError(
+                f"Batch '{batch.batch_id}' contains {batch.error_rows} validation errors and is marked as REVIEW_REQUIRED. Partial batch commits are strictly prohibited. Correct the invalid records and revalidate before committing."
+            )
 
         valid_staged_rows = list(
             ImportStagedRow.objects.filter(batch=batch, is_valid=True, is_imported=False)
@@ -182,15 +194,26 @@ class ImportExecutionService:
                     variance = clean_actual - clean_target
                     if clean_target > 0:
                         var_pct = round((variance / clean_target) * Decimal("100.00"), 2)
-                        if clean_actual >= clean_target:
-                            rag_status = "GREEN"
-                        elif clean_actual >= clean_target * Decimal("0.80"):
-                            rag_status = "AMBER"
+                        if getattr(kpi_obj, "direction", "HIGHER_BETTER") == "LOWER_BETTER":
+                            if clean_actual <= clean_target:
+                                rag_status = "GREEN"
+                            elif clean_actual <= clean_target * Decimal("1.20"):
+                                rag_status = "AMBER"
+                            else:
+                                rag_status = "RED"
                         else:
-                            rag_status = "RED"
+                            if clean_actual >= clean_target:
+                                rag_status = "GREEN"
+                            elif clean_actual >= clean_target * Decimal("0.80"):
+                                rag_status = "AMBER"
+                            else:
+                                rag_status = "RED"
                     else:
                         var_pct = Decimal("0.00")
-                        rag_status = "GREEN" if clean_actual >= 0 else "RED"
+                        if getattr(kpi_obj, "direction", "HIGHER_BETTER") == "LOWER_BETTER":
+                            rag_status = "GREEN" if clean_actual <= 0 else "RED"
+                        else:
+                            rag_status = "GREEN" if clean_actual >= 0 else "RED"
 
                     if "rag_status" in raw and str(raw["rag_status"]).upper() in ["GREEN", "AMBER", "RED"]:
                         rag_status = str(raw["rag_status"]).upper()

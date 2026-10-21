@@ -1,4 +1,4 @@
-python-interpreter-path = "C:/Users/Mayank Office/Desktop/MAPAR-v2/backend/.venv/Scripts/python.exe"
+python-interpreter-path = "backend/.venv/Scripts/python.exe"
 search-path = [
     "backend",
     "backend/apps",

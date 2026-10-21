@@ -15,6 +15,7 @@ class ImportBatch(models.Model):
         UPLOADED = "UPLOADED", "Uploaded"
         VALIDATING = "VALIDATING", "Validating"
         VALIDATED = "VALIDATED", "Validated (Pending Commit)"
+        REVIEW_REQUIRED = "REVIEW_REQUIRED", "Review Required"
         COMMITTING = "COMMITTING", "Committing"
         COMPLETED = "COMPLETED", "Completed"
         FAILED = "FAILED", "Validation Failed"
@@ -75,10 +76,18 @@ class ImportBatch(models.Model):
     original_filename = models.CharField(max_length=255)
     stored_file_path = models.CharField(max_length=500, blank=True, default="")
     file_size_bytes = models.BigIntegerField(default=0)
+    file_hash = models.CharField(max_length=64, blank=True, default="", db_index=True, help_text="SHA-256 hash of uploaded file")
     
     total_rows = models.IntegerField(default=0)
     valid_rows = models.IntegerField(default=0)
     error_rows = models.IntegerField(default=0)
+    duplicate_rows_count = models.IntegerField(default=0, help_text="Count of detected duplicate records")
+    duplicate_handling = models.CharField(
+        max_length=20,
+        choices=[("ERROR", "Flag as Error"), ("SKIP", "Skip Duplicates"), ("CORRECT", "Correct / Overwrite Existing")],
+        default="ERROR"
+    )
+    auto_committed = models.BooleanField(default=False, help_text="True if batch was automatically committed after passing all validation rules")
     
     status = models.CharField(max_length=30, choices=Status.choices, default=Status.UPLOADED, db_index=True)
     summary_notes = models.TextField(blank=True, default="")

@@ -38,7 +38,10 @@ export const ManagementCockpitPage: React.FC = () => {
     handleExportCsv,
   } = useCockpit();
 
-  const activePeriodName = summaryData?.period?.name || "ACTIVE CYCLE 2026-09";
+  const activePeriodName =
+    summaryData?.period?.name ||
+    filtersData?.periods?.find((p) => p.id === filters.periodId)?.name ||
+    "Active Cycle";
 
   return (
     <Box sx={{ pb: 4 }}>

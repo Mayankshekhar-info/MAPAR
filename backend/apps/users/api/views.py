@@ -81,7 +81,7 @@ class UserDetailView(APIView):
 
         try:
             user = UserService.update_user(pk, serializer.validated_data, admin_user=request.user)
-            detail = get_user_detail(user.id)
+            detail = get_user_detail(user.id, request_user=request.user)
             return Response({"success": True, "user": detail})
         except ValidationError as e:
             return Response({"success": False, "errors": e.message_dict if hasattr(e, "message_dict") else str(e)}, status=status.HTTP_400_BAD_REQUEST)

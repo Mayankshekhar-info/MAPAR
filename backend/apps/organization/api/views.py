@@ -9,6 +9,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.core.exceptions import ValidationError
 
+from common.permissions.authorization import AuthorizationService
 from apps.organization.selectors.organization_selectors import (
     get_hierarchy_tree,
     get_hierarchy_summary,
@@ -86,6 +87,7 @@ class CreateNodeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        AuthorizationService.require(user=request.user, permission="organization.create")
         serializer = CreateNodeSerializer(data=request.data)
         if not serializer.is_valid():
             return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
@@ -117,6 +119,7 @@ class UpdateNodeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def put(self, request, level, node_id):
+        AuthorizationService.require(user=request.user, permission="organization.edit")
         serializer = UpdateNodeSerializer(data=request.data)
         if not serializer.is_valid():
             return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
@@ -149,6 +152,7 @@ class DeleteNodeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, level, node_id):
+        AuthorizationService.require(user=request.user, permission="organization.delete")
         try:
             result = OrganizationHierarchyService.delete_node(
                 level=level,

@@ -9,24 +9,9 @@ import {
   KPIRefinedRecordsResponse,
   KPITestLogicPayload,
   KPITestLogicResult,
-  KPIFormulaPreviewResponse,
 } from "../types/kpi";
 
 export const kpiService = {
-  previewFormula: async (payload: {
-    formula: string;
-    dataset_id?: number | null;
-    input_column?: string;
-    constants?: Record<string, number>;
-    decimal_precision?: number;
-    input_unit?: string;
-    output_unit?: string;
-    limit?: number;
-  }): Promise<KPIFormulaPreviewResponse> => {
-    const res = await api.post<KPIFormulaPreviewResponse>("/kpi/preview-formula/", payload);
-    return res.data;
-  },
-
   fetchDefinitions: async (params?: {
     search?: string;
     is_active?: boolean;
@@ -116,4 +101,84 @@ export const kpiService = {
     const res = await api.get<KPIRefinedRecordsResponse>(`/kpi/results/${resultId}/records/`, { params });
     return res.data;
   },
+
+  parseFormulaConfiguration: async (
+    file: File,
+    customMapping?: Record<string, string>,
+    targetSheet?: string
+  ): Promise<any> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (customMapping && Object.keys(customMapping).length > 0) {
+      formData.append("custom_mapping", JSON.stringify(customMapping));
+    }
+    if (targetSheet) {
+      formData.append("target_sheet", targetSheet);
+    }
+    const res = await api.post("/kpi/configuration/parse/", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data;
+  },
+
+  activateConfiguration: async (payload: {
+    file?: File;
+    file_hash?: string;
+    original_filename?: string;
+    approved_kpis: any[];
+    scope_type: "ENTERPRISE" | "COMPANY" | "PROJECT" | "CIRCLE";
+    company_id?: number | null;
+    project_id?: number | null;
+    circle_id?: number | null;
+    hierarchy_level?: string | null;
+    hierarchy_id?: number | null;
+    is_inheritance_allowed?: boolean;
+    changelog?: string;
+  }): Promise<{ success: boolean; message: string; version_number: number; activated_count: number }> => {
+    const formData = new FormData();
+    if (payload.file) {
+      formData.append("file", payload.file);
+    }
+    if (payload.file_hash) formData.append("file_hash", payload.file_hash);
+    if (payload.original_filename) formData.append("original_filename", payload.original_filename);
+    formData.append("approved_kpis", JSON.stringify(payload.approved_kpis));
+    formData.append("scope_type", payload.scope_type);
+    if (payload.company_id) formData.append("company_id", String(payload.company_id));
+    if (payload.project_id) formData.append("project_id", String(payload.project_id));
+    if (payload.circle_id) formData.append("circle_id", String(payload.circle_id));
+    if (payload.hierarchy_level) formData.append("hierarchy_level", payload.hierarchy_level);
+    if (payload.hierarchy_id) formData.append("hierarchy_id", String(payload.hierarchy_id));
+    if (payload.is_inheritance_allowed !== undefined) {
+      formData.append("is_inheritance_allowed", String(payload.is_inheritance_allowed));
+    }
+    if (payload.changelog) formData.append("changelog", payload.changelog);
+
+    const res = await api.post("/kpi/configuration/activate/", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data;
+  },
+
+  fetchConfigurationVersions: async (params?: {
+    scope_type?: string;
+    company_id?: number;
+    project_id?: number;
+    circle_id?: number;
+  }): Promise<{ success: boolean; versions: any[] }> => {
+    const res = await api.get("/kpi/configuration/versions/", { params });
+    return res.data;
+  },
+
+  downloadFormulaTemplate: async (): Promise<Blob> => {
+    const res = await api.get("/kpi/configuration/template/", {
+      responseType: "blob",
+    });
+    return res.data;
+  },
+
+  syncCanonicalKPIs: async (): Promise<{ success: boolean; message: string; count: number }> => {
+    const res = await api.post("/kpi/sync-canonical/");
+    return res.data;
+  },
 };
+

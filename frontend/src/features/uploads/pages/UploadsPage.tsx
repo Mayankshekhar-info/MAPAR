@@ -74,7 +74,8 @@ export const UploadsPage: React.FC = () => {
       startDate?: string | null;
       endDate?: string | null;
     },
-    kpiId?: number | null
+    kpiId?: number | null,
+    duplicateHandling?: string
   ) => {
     const batch = await uploadMutation.mutateAsync({
       file,
@@ -82,6 +83,7 @@ export const UploadsPage: React.FC = () => {
       reportingPeriodId,
       periodConfig,
       kpiId,
+      duplicateHandling,
     });
     setToastMessage(`File uploaded and validated. Created Batch: ${batch.batch_id}`);
     setToastSeverity("success");

@@ -16,19 +16,26 @@ import AddIcon from "@mui/icons-material/Add";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import TuneIcon from "@mui/icons-material/Tune";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import HistoryIcon from "@mui/icons-material/History";
+import DownloadIcon from "@mui/icons-material/Download";
+import SyncIcon from "@mui/icons-material/Sync";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 
 import { PageHeader } from "../../../components/PageHeader/PageHeader";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import { KPIDefinition, KPIDashboardCard as CardData } from "../types/kpi";
 import { useKPIDefinitions } from "../hooks/useKPIDefinitions";
 import { useKPIDashboard } from "../hooks/useKPIDashboard";
+import { useKPIFormulaUpload } from "../hooks/useKPIFormulaUpload";
 import { KPICardGrid } from "../components/KPICardGrid";
 import { KPIDefinitionTable } from "../components/KPIDefinitionTable";
 import { KPIBuilderModal } from "../components/KPIBuilderModal";
 import { KPIDiagnosticsDrawer } from "../components/KPIDiagnosticsDrawer";
+import { KPIFormulaUploadModal } from "../components/KPIFormulaUploadModal";
+import { KPIConfigVersionsDrawer } from "../components/KPIConfigVersionsDrawer";
 import { cockpitService } from "../../dashboard/api/cockpitService";
 import { PeriodSelector } from "../../../components/PeriodSelector";
-
 
 import { organizationService } from "../../organization/api/organizationService";
 import { CascadingOption, HierarchyLevel } from "../../organization/types/organization.types";
@@ -54,6 +61,11 @@ export const KPIRegistryPage: React.FC = () => {
 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [kpiToDelete, setKpiToDelete] = useState<KPIDefinition | null>(null);
+
+  const [formulaUploadOpen, setFormulaUploadOpen] = useState(false);
+  const [versionsDrawerOpen, setVersionsDrawerOpen] = useState(false);
+
+  const { downloadTemplate, syncCanonicalMutation, isSyncing } = useKPIFormulaUpload();
 
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -191,6 +203,29 @@ export const KPIRegistryPage: React.FC = () => {
     refetchCards();
   };
 
+  const handleDownloadTemplate = async () => {
+    try {
+      await downloadTemplate();
+      setToastMessage("Universal KPI formula starter template downloaded.");
+      setToastSeverity("success");
+    } catch {
+      setToastMessage("Failed to download formula template.");
+      setToastSeverity("error");
+    }
+  };
+
+  const handleSyncCanonical = async () => {
+    try {
+      const res = await syncCanonicalMutation.mutateAsync();
+      setToastMessage(res.message || `Successfully synced ${res.count} canonical KPIs.`);
+      setToastSeverity("success");
+      refetchCards();
+    } catch (err: any) {
+      setToastMessage(err?.message || "Failed to sync canonical KPIs.");
+      setToastSeverity("error");
+    }
+  };
+
   return (
     <Box sx={{ p: { xs: 2, md: 3.5 }, display: "flex", flexDirection: "column", gap: 3 }}>
       {/* Header */}
@@ -200,16 +235,122 @@ export const KPIRegistryPage: React.FC = () => {
         badge="Enterprise Engine"
         badgeColor="info"
         actions={
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleOpenCreate}
-            sx={{ fontWeight: 600 }}
-          >
-            Configure New KPI
-          </Button>
+          <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap", gap: 1 }}>
+            <Button
+              variant="contained"
+              startIcon={<UploadFileIcon />}
+              onClick={() => setFormulaUploadOpen(true)}
+              sx={{
+                fontWeight: 600,
+                background: "linear-gradient(135deg, #1976d2 0%, #0d47a1 100%)",
+                boxShadow: "0 2px 8px rgba(25, 118, 210, 0.25)",
+              }}
+            >
+              Upload Formula Excel
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<HistoryIcon />}
+              onClick={() => setVersionsDrawerOpen(true)}
+              sx={{ fontWeight: 600 }}
+            >
+              Version History
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<DownloadIcon />}
+              onClick={handleDownloadTemplate}
+              sx={{ fontWeight: 600 }}
+            >
+              Template
+            </Button>
+            <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={<SyncIcon />}
+              onClick={handleSyncCanonical}
+              disabled={isSyncing}
+              sx={{ fontWeight: 600 }}
+            >
+              {isSyncing ? "Syncing..." : "Sync Standard KPIs"}
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={handleOpenCreate}
+              sx={{ fontWeight: 600 }}
+            >
+              Configure KPI
+            </Button>
+          </Stack>
         }
       />
+
+      {/* Onboarding Guidance Banner when 0 KPIs exist */}
+      {definitions.length === 0 && !isLoadingDefinitions && (
+        <Card
+          variant="outlined"
+          sx={{
+            p: 3,
+            borderRadius: 2.5,
+            border: "1.5px dashed",
+            borderColor: "primary.main",
+            bgcolor: (theme) =>
+              theme.palette.mode === "dark" ? "rgba(25, 118, 210, 0.08)" : "rgba(25, 118, 210, 0.04)",
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: { xs: "column", md: "row" },
+              alignItems: { md: "center" },
+              justifyContent: "space-between",
+              gap: 2,
+            }}
+          >
+            <Box>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                <AutoAwesomeIcon color="primary" />
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  Initialize Universal KPI Engine
+                </Typography>
+              </Stack>
+              <Typography variant="body2" color="text.secondary">
+                No KPI formula models are currently active in PostgreSQL. Upload an Excel formula workbook,
+                download the starter template, or synchronize standard telecommunications and operations metrics.
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap", gap: 1 }}>
+              <Button
+                variant="contained"
+                startIcon={<UploadFileIcon />}
+                onClick={() => setFormulaUploadOpen(true)}
+                sx={{ fontWeight: 600 }}
+              >
+                Upload Formula Workbook
+              </Button>
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={<SyncIcon />}
+                onClick={handleSyncCanonical}
+                disabled={isSyncing}
+                sx={{ fontWeight: 600 }}
+              >
+                Sync Standard KPIs
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<DownloadIcon />}
+                onClick={handleDownloadTemplate}
+                sx={{ fontWeight: 600 }}
+              >
+                Download Starter Template
+              </Button>
+            </Stack>
+          </Box>
+        </Card>
+      )}
 
       {/* Navigation Tabs */}
       <Card variant="outlined" sx={{ borderRadius: 2 }}>
@@ -352,6 +493,23 @@ export const KPIRegistryPage: React.FC = () => {
         confirmColor="error"
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteConfirmOpen(false)}
+      />
+
+      {/* KPI Formula Excel Upload & Activation Modal */}
+      <KPIFormulaUploadModal
+        open={formulaUploadOpen}
+        onClose={() => setFormulaUploadOpen(false)}
+        onSuccess={() => {
+          setToastMessage("KPI formula configuration successfully activated.");
+          setToastSeverity("success");
+          refetchCards();
+        }}
+      />
+
+      {/* KPI Configuration Versions Audit Drawer */}
+      <KPIConfigVersionsDrawer
+        open={versionsDrawerOpen}
+        onClose={() => setVersionsDrawerOpen(false)}
       />
 
       {/* Toast Feedback */}

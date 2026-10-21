@@ -12,6 +12,7 @@ from apps.imports.api.views import (
     BatchErrorsView,
     BatchErrorReportExportView,
     BatchCommitView,
+    BatchRevalidateView,
     TemplateCompatibleKPIsView,
     BatchProcessKPIView,
 )
@@ -36,4 +37,5 @@ urlpatterns = [
     path("batches/<str:identifier>/errors/", BatchErrorsView.as_view(), name="uploads-batch-errors"),
     path("batches/<str:identifier>/errors/export/", BatchErrorReportExportView.as_view(), name="uploads-batch-errors-export"),
     path("batches/<str:identifier>/commit/", BatchCommitView.as_view(), name="uploads-batch-commit"),
+    path("batches/<str:identifier>/revalidate/", BatchRevalidateView.as_view(), name="uploads-batch-revalidate"),
 ]
