@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.core.exceptions import ValidationError
+from django.db import models
 
 from apps.kpi.selectors.kpi_selectors import KPISelectors
 from apps.kpi.services.kpi_definition_service import KPIDefinitionService
@@ -21,6 +22,7 @@ from apps.kpi.api.serializers import (
     KPICalculateRequestSerializer,
     KPITestLogicRequestSerializer,
     KPIFormulaValidationSerializer,
+    KPIFormulaPreviewSerializer,
     KPICalculationResultSerializer,
 )
 from apps.kpi.permissions.kpi_permissions import HasKPIPermission
@@ -395,4 +397,112 @@ class KPITestLogicView(APIView):
             return Response(result, status=status.HTTP_200_OK if result.get("success") else status.HTTP_400_BAD_REQUEST)
         except Exception as ex:
             return Response({"success": False, "error": str(ex), "message": str(ex)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class KPIPreviewFormulaView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = KPIFormulaPreviewSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        formula = data["formula"]
+        dataset_id = data.get("dataset_id")
+        input_column = data.get("input_column", "")
+        constants = data.get("constants") or {}
+        decimal_precision = data.get("decimal_precision", 2)
+        input_unit = data.get("input_unit", "")
+        output_unit = data.get("output_unit", "")
+        limit = min(data.get("limit", 5), 20)
+
+        from apps.imports.models import UploadTemplate, ImportBatch, ImportStagedRow
+        from apps.kpi.services.formula_calculation_service import KPIFormulaCalculationService
+
+        available_columns = []
+        template = None
+        if dataset_id:
+            template = UploadTemplate.objects.filter(id=dataset_id).first()
+            if template:
+                active_ver = template.versions.filter(is_active=True).first() or template.versions.order_by("-version_number").first()
+                if active_ver:
+                    available_columns = list(active_ver.columns.values_list("name", flat=True))
+
+        val_res = KPIFormulaCalculationService.validate_formula(
+            formula=formula,
+            available_columns=available_columns if available_columns else None,
+            constants=constants,
+        )
+
+        if not val_res["is_valid"]:
+            return Response({
+                "is_valid": False,
+                "error": val_res.get("error", "Invalid formula syntax"),
+                "detected_variables": val_res.get("detected_variables", []),
+                "referenced_columns": val_res.get("referenced_columns", []),
+                "has_actual_data": False,
+                "samples": [],
+            }, status=status.HTTP_200_OK)
+
+        detected_vars = val_res.get("detected_variables", [])
+        const_desc = ", ".join([f"{k} = {v}" for k, v in constants.items()]) if constants else "None"
+        explanation = (
+            f"Formula evaluates `{formula}` using columns {detected_vars}. "
+            f"Constants: {const_desc}. "
+            f"Result rounded to {decimal_precision} decimal places ({output_unit or 'units'})."
+        )
+
+        samples = []
+        has_actual_data = False
+        if template:
+            batch_qs = ImportBatch.objects.filter(
+                template_version__template=template,
+                status=ImportBatch.Status.COMPLETED if hasattr(ImportBatch, "Status") else "COMPLETED",
+            ).order_by("-created_at")
+            latest_batch = batch_qs.first()
+            if latest_batch:
+                staged_rows = list(
+                    ImportStagedRow.objects.filter(batch=latest_batch, is_valid=True)
+                    .order_by("row_index")[:limit]
+                )
+                if staged_rows:
+                    has_actual_data = True
+                    for sr in staged_rows:
+                        calc_val, status_code, err_msg = KPIFormulaCalculationService.evaluate_row(
+                            row=sr,
+                            formula=formula,
+                            input_column=input_column,
+                            constants=constants,
+                            decimal_precision=decimal_precision,
+                        )
+                        input_vals = {}
+                        if sr.raw_data:
+                            for col in detected_vars:
+                                if col in sr.raw_data:
+                                    input_vals[col] = sr.raw_data[col]
+                            if input_column and input_column in sr.raw_data and input_column not in input_vals:
+                                input_vals[input_column] = sr.raw_data[input_column]
+
+                        samples.append({
+                            "row_number": getattr(sr, "row_index", getattr(sr, "row_number", 1)),
+                            "inputs": input_vals,
+                            "calculated_value": float(calc_val) if calc_val is not None else None,
+                            "output_unit": output_unit,
+                            "status": status_code,
+                            "error": err_msg,
+                        })
+
+        return Response({
+            "is_valid": True,
+            "error": None,
+            "explanation": explanation,
+            "detected_variables": detected_vars,
+            "referenced_columns": val_res.get("referenced_columns", []),
+            "has_actual_data": has_actual_data,
+            "samples": samples,
+            "template_name": template.name if template else None,
+            "output_unit": output_unit,
+            "decimal_precision": decimal_precision,
+        }, status=status.HTTP_200_OK)
 

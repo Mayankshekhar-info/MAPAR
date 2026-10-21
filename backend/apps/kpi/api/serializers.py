@@ -274,6 +274,18 @@ class KPIFormulaValidationSerializer(serializers.Serializer):
     variables = serializers.ListField(child=serializers.CharField(), required=False, default=list)
 
 
+class KPIFormulaPreviewSerializer(serializers.Serializer):
+    dataset_id = serializers.IntegerField(required=False, allow_null=True)
+    formula = serializers.CharField(allow_blank=False)
+    input_column = serializers.CharField(required=False, allow_blank=True, default="")
+    constants = serializers.DictField(required=False, default=dict)
+    decimal_precision = serializers.IntegerField(required=False, default=2)
+    input_unit = serializers.CharField(required=False, allow_blank=True, default="")
+    output_unit = serializers.CharField(required=False, allow_blank=True, default="")
+    period_id = serializers.IntegerField(required=False, allow_null=True)
+    limit = serializers.IntegerField(required=False, default=5)
+
+
 class KPICalculationResultSerializer(serializers.ModelSerializer):
     kpi_code = serializers.CharField(source="kpi.code", read_only=True)
     kpi_name = serializers.CharField(source="kpi.name", read_only=True)

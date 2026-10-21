@@ -125,6 +125,57 @@ export interface KPIComparisonRule {
   calculation_status?: string;
   error_message?: string;
   status_label?: string;
+
+  // Formula Engine Configuration
+  formula_expression?: string;
+  formula_name?: string;
+  input_column?: string;
+  input_unit?: string;
+  output_column_name?: string;
+  output_unit?: string;
+  decimal_precision?: number;
+  constants?: Record<string, number>;
+  dataset_id?: number | null;
+  dataset_name?: string;
+}
+
+export interface KPIFormulaConfig {
+  id?: string;
+  name?: string;
+  dataset_id?: number | null;
+  dataset_name?: string;
+  input_column?: string;
+  input_unit?: string;
+  formula_expression?: string;
+  output_column_name?: string;
+  output_unit?: string;
+  decimal_precision?: number;
+  rounding?: string;
+  constants?: Record<string, number>;
+  aggregation?: "SUM" | "AVG" | "COUNT" | "COUNT_DISTINCT" | "MIN" | "MAX" | "LATEST";
+  is_active?: boolean;
+}
+
+export interface KPIFormulaPreviewSample {
+  row_number: number;
+  inputs: Record<string, any>;
+  calculated_value: number | null;
+  output_unit?: string;
+  status: string;
+  error?: string | null;
+}
+
+export interface KPIFormulaPreviewResponse {
+  is_valid: boolean;
+  error?: string | null;
+  explanation?: string;
+  detected_variables?: string[];
+  referenced_columns?: string[];
+  has_actual_data: boolean;
+  samples: KPIFormulaPreviewSample[];
+  template_name?: string;
+  output_unit?: string;
+  decimal_precision?: number;
 }
 
 export interface KPIComparisonItem {

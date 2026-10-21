@@ -284,11 +284,14 @@ class KPIEngineService:
         node_name: str,
         kpi_target_val: Optional[Decimal] = None,
         decimal_precision: int = 2,
+        kpi: Optional[KPIDefinition] = None,
     ) -> Dict[str, Any]:
         """
         Calculates actual achievement for a comparison item from its configured column
         in the authoritative uploaded dataset, evaluating against the manual standard value.
+        Supports dynamic mathematical formulas and KPICalculatedOutput generation.
         """
+
         data_source = comp.get("data_source") or {}
         has_column = bool(comp.get("achieved_data_column") or data_source.get("metric_field"))
         if comp.get("is_manual") or (not has_column and comp.get("actual_value") not in (None, "")):
@@ -428,17 +431,26 @@ class KPIEngineService:
         if isinstance(raw_rules, list) and len(raw_rules) > 0:
             for idx, r in enumerate(raw_rules):
                 if isinstance(r, dict):
+                    f_expr = (r.get("formula_expression") or (comp.get("formula_expression") if idx == 0 else "") or "").strip()
                     rules_to_eval.append({
                         "id": r.get("id") or f"rule-{idx+1}",
-                        "achieved_data_column": (r.get("achieved_data_column") or "").strip(),
+                        "achieved_data_column": (r.get("achieved_data_column") or r.get("output_column_name") or "").strip(),
                         "standard_value": r.get("standard_value") if r.get("standard_value") not in (None, "") else r.get("target_value"),
                         "performance_direction": r.get("performance_direction") or "HIGHER_BETTER",
-                        "unit": r.get("unit") or comp.get("unit") or "%",
+                        "unit": r.get("unit") or r.get("output_unit") or comp.get("unit") or "%",
                         "aggregation": r.get("aggregation") or data_source.get("aggregation") or "AVG",
                         "actual_value": r.get("actual_value"),
+                        "formula_expression": f_expr,
+                        "formula_name": r.get("formula_name") or comp.get("name") or f"Formula #{idx+1}",
+                        "input_column": (r.get("input_column") or comp.get("input_column") or r.get("achieved_data_column") or "").strip(),
+                        "input_unit": r.get("input_unit") or comp.get("input_unit") or "Minutes",
+                        "output_column_name": (r.get("output_column_name") or comp.get("output_column_name") or r.get("achieved_data_column") or "Calculated Output").strip(),
+                        "output_unit": r.get("output_unit") or r.get("unit") or comp.get("unit") or "%",
+                        "decimal_precision": r.get("decimal_precision", decimal_precision),
+                        "constants": r.get("constants") or comp.get("constants") or {},
                     })
         else:
-            col_fallback = (comp.get("achieved_data_column") or data_source.get("metric_field") or "").strip()
+            col_fallback = (comp.get("achieved_data_column") or data_source.get("metric_field") or comp.get("output_column_name") or "").strip()
             std_fallback = comp.get("standard_value") if comp.get("standard_value") not in (None, "") else comp.get("target_value")
             rules_to_eval.append({
                 "id": comp.get("id") or "rule-1",
@@ -448,6 +460,14 @@ class KPIEngineService:
                 "unit": comp.get("unit") or "%",
                 "aggregation": data_source.get("aggregation") or "AVG",
                 "actual_value": comp.get("actual_value"),
+                "formula_expression": (comp.get("formula_expression") or "").strip(),
+                "formula_name": comp.get("formula_name") or comp.get("name") or "",
+                "input_column": (comp.get("input_column") or col_fallback).strip(),
+                "input_unit": comp.get("input_unit") or "Minutes",
+                "output_column_name": (comp.get("output_column_name") or col_fallback or "Calculated Output").strip(),
+                "output_unit": comp.get("output_unit") or comp.get("unit") or "%",
+                "decimal_precision": comp.get("decimal_precision", decimal_precision),
+                "constants": comp.get("constants") or {},
             })
 
         evaluated_rules = []
@@ -474,7 +494,109 @@ class KPIEngineService:
             r_perf_status = "UNKNOWN"
             r_error = ""
 
-            if ds_type == "UPLOAD":
+            formula_expr = (r.get("formula_expression") or "").strip()
+
+            if ds_type == "UPLOAD" and formula_expr:
+                if not template:
+                    r_calc_status = "NO_DATA"
+                    r_perf_status = "NO_DATA"
+                    r_error = "No uploaded dataset available in the system."
+                elif not batches:
+                    r_calc_status = "NO_DATA"
+                    r_perf_status = "NO_DATA"
+                    r_error = f"Awaiting uploaded data. No uploaded batches found for dataset '{template.name}' in reporting period '{c_period_name}'."
+                elif c_records_considered == 0:
+                    r_calc_status = "NO_DATA"
+                    r_perf_status = "NO_DATA"
+                    r_error = f"No uploaded records found for dataset '{template.name}' matching {node_name}."
+                else:
+                    from apps.kpi.services.formula_calculation_service import KPIFormulaCalculationService
+                    f_cfg = {
+                        "formula_expression": formula_expr,
+                        "formula_name": r.get("formula_name") or comp.get("name") or "",
+                        "input_column": r.get("input_column") or r_col,
+                        "input_unit": r.get("input_unit") or "Minutes",
+                        "output_column_name": r.get("output_column_name") or r_col,
+                        "output_unit": r.get("output_unit") or r.get("unit") or "%",
+                        "decimal_precision": int(r.get("decimal_precision", decimal_precision)),
+                        "constants": r.get("constants") or {},
+                        "aggregation": r.get("aggregation") or "AVG",
+                    }
+                    target_batch = active_batches[0] if 'active_batches' in locals() and active_batches else batches[0]
+                    if kpi:
+                        batch_res = KPIFormulaCalculationService.execute_and_persist_formula_outputs(
+                            kpi=kpi,
+                            batch=target_batch,
+                            formula_config=f_cfg,
+                            rule_id=r.get("id") or "rule_1",
+                            formula_name=r.get("formula_name") or comp.get("name") or "",
+                        )
+                    else:
+                        row_vals = []
+                        st_counts = {"SUCCESS": 0, "MISSING_COLUMN": 0, "INVALID_INPUT": 0, "PENDING_DATA": 0, "DIV_ZERO": 0}
+                        for m_r in matched_rows:
+                            c_v, st, err = KPIFormulaCalculationService.evaluate_row_formula(
+                                raw_row_data=m_r.raw_data or {},
+                                formula_config=f_cfg,
+                                constants=f_cfg["constants"],
+                            )
+                            st_counts[st] = st_counts.get(st, 0) + 1
+                            if st == "SUCCESS" and c_v is not None:
+                                row_vals.append(c_v)
+                        avg_v = None
+                        if row_vals:
+                            avg_v = sum(row_vals, Decimal("0")) / Decimal(str(len(row_vals)))
+                        batch_res = {
+                            "overall_status": "SUCCESS" if row_vals else "CONFIG_INVALID" if st_counts["MISSING_COLUMN"] > 0 else "NO_DATA",
+                            "calculated_value": avg_v,
+                        }
+
+                    ov_status = batch_res.get("overall_status", "SUCCESS")
+                    if ov_status == "SUCCESS" and batch_res.get("calculated_value") is not None:
+                        d_val = batch_res["calculated_value"]
+                        rule_prec = int(r.get("decimal_precision", decimal_precision))
+                        prec_str = "1." + ("0" * rule_prec) if rule_prec > 0 else "1"
+                        r_actual = float(d_val.quantize(Decimal(prec_str), rounding=ROUND_HALF_UP))
+                        r_calc_status = "SUCCESS"
+                        if r_target_num is not None:
+                            r_var = round(r_actual - r_target_num, 2)
+                            if r_pdir == "HIGHER_BETTER":
+                                r_perf_status = "MEETS_TARGET" if r_actual >= r_target_num else "BELOW_TARGET"
+                                r_pct = round((r_actual / r_target_num) * 100, 2) if r_target_num != 0 else (100.0 if r_actual >= r_target_num else 0.0)
+                            elif r_pdir == "LOWER_BETTER":
+                                r_perf_status = "MEETS_TARGET" if r_actual <= r_target_num else "EXCEEDED_LIMIT"
+                                r_pct = round((r_target_num / r_actual) * 100, 2) if r_actual > 0 else (100.0 if r_actual <= r_target_num else 0.0)
+                            else:
+                                if abs(r_actual - r_target_num) < 1e-6:
+                                    r_perf_status = "MEETS_TARGET"
+                                    r_pct = 100.0
+                                else:
+                                    r_perf_status = "DOES_NOT_MATCH"
+                                    r_pct = round((r_actual / r_target_num) * 100, 2) if r_target_num != 0 else 0.0
+                        else:
+                            r_perf_status = "SUCCESS"
+                    elif ov_status == "MISSING_COLUMN":
+                        r_calc_status = "CONFIG_INVALID"
+                        r_perf_status = "CONFIG_INVALID"
+                        r_error = f"Column '{f_cfg['input_column']}' not found in uploaded records for dataset '{template.name}'."
+                    elif ov_status == "INVALID_INPUT":
+                        r_calc_status = "INVALID_INPUT"
+                        r_perf_status = "INVALID_INPUT"
+                        r_error = f"Impossible or invalid input value in column '{f_cfg['input_column']}'."
+                    elif ov_status == "PENDING_DATA":
+                        r_calc_status = "NO_DATA"
+                        r_perf_status = "NO_DATA"
+                        r_error = f"Input column '{f_cfg['input_column']}' is empty in uploaded records."
+                    elif ov_status == "DIV_ZERO":
+                        r_calc_status = "DIV_ZERO"
+                        r_perf_status = "ERROR"
+                        r_error = "Division by zero in formula calculation."
+                    else:
+                        r_calc_status = "ERROR"
+                        r_perf_status = "ERROR"
+                        r_error = "Formula calculation error."
+
+            elif ds_type == "UPLOAD":
                 if not template:
                     r_calc_status = "NO_DATA"
                     r_perf_status = "NO_DATA"
@@ -649,6 +771,10 @@ class KPIEngineService:
                 r_status_label = "Column Missing"
             elif r_perf_status == "NO_DATA":
                 r_status_label = "Pending Data"
+            elif r_perf_status == "INVALID_INPUT":
+                r_status_label = "Invalid Input"
+            elif r_perf_status == "DIV_ZERO":
+                r_status_label = "Calculation Error"
             else:
                 r_status_label = "Not Met"
 
@@ -667,7 +793,15 @@ class KPIEngineService:
                 "calculation_status": r_calc_status,
                 "status_label": r_status_label,
                 "error_message": r_error,
+                "formula_name": r.get("formula_name") or "",
+                "formula_expression": r.get("formula_expression") or "",
+                "input_column": r.get("input_column") or r_col,
+                "input_unit": r.get("input_unit") or "",
+                "output_column_name": r.get("output_column_name") or r_col,
+                "output_unit": r.get("output_unit") or r.get("unit") or "%",
+                "constants": r.get("constants") or {},
             })
+
 
         # Calculate Overall Comparison Status based on all individual rules:
         # 1. Met: only when ALL applicable rules are met
@@ -983,7 +1117,7 @@ class KPIEngineService:
         target_val: Optional[Decimal] = None
 
         p_cfg = getattr(kpi, "presentation_config", {}) or {}
-        configured_comparisons = p_cfg.get("comparisons", [])
+        configured_comparisons = p_cfg.get("comparisons") or p_cfg.get("comparison_items") or []
         active_comparisons = [c for c in configured_comparisons if c.get("is_enabled", True)] if isinstance(configured_comparisons, list) else []
 
         processed_comparisons = []
@@ -998,7 +1132,9 @@ class KPIEngineService:
                         node_name=node_name,
                         kpi_target_val=kpi.target_value,
                         decimal_precision=kpi.decimal_precision or 2,
+                        kpi=kpi,
                     )
+
                 else:
                     p_comp = {**c, "performance_status": "DISABLED"}
                 processed_comparisons.append(p_comp)
@@ -1463,13 +1599,22 @@ class KPIEngineService:
         if not columns and paged_rows:
             columns = list(paged_rows[0].raw_data.keys())
 
+        from apps.kpi.services.formula_calculation_service import KPIFormulaCalculationService
+        enriched_records = KPIFormulaCalculationService.merge_calculated_columns_into_rows(paged_rows, kpi=kpi)
+        if enriched_records:
+            existing_cols_set = set(columns)
+            for k in enriched_records[0].keys():
+                if k not in existing_cols_set:
+                    columns.append(k)
+                    existing_cols_set.add(k)
+
         return {
             "total_records": total_count,
             "page": page,
             "page_size": page_size,
             "has_more": total_count > end_idx,
             "columns": columns,
-            "records": [r.raw_data for r in paged_rows],
+            "records": enriched_records if enriched_records else [r.raw_data for r in paged_rows],
             "node_name": node_name,
             "period_name": period.name if period else "",
             "applied_filters": [

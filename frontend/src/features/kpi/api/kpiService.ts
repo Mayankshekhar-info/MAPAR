@@ -9,9 +9,24 @@ import {
   KPIRefinedRecordsResponse,
   KPITestLogicPayload,
   KPITestLogicResult,
+  KPIFormulaPreviewResponse,
 } from "../types/kpi";
 
 export const kpiService = {
+  previewFormula: async (payload: {
+    formula: string;
+    dataset_id?: number | null;
+    input_column?: string;
+    constants?: Record<string, number>;
+    decimal_precision?: number;
+    input_unit?: string;
+    output_unit?: string;
+    limit?: number;
+  }): Promise<KPIFormulaPreviewResponse> => {
+    const res = await api.post<KPIFormulaPreviewResponse>("/kpi/preview-formula/", payload);
+    return res.data;
+  },
+
   fetchDefinitions: async (params?: {
     search?: string;
     is_active?: boolean;

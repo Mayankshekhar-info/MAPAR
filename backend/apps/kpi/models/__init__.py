@@ -1,6 +1,7 @@
 from .kpi_definition import KPIDefinition, KPIParameter, KPIFilter, KPIDependency
 from .kpi_result import KPICalculationResult
 from .kpi_audit import KPICalculationAuditLog
+from .calculated_output import KPICalculatedOutput
 
 __all__ = [
     "KPIDefinition",
@@ -9,4 +10,6 @@ __all__ = [
     "KPIDependency",
     "KPICalculationResult",
     "KPICalculationAuditLog",
+    "KPICalculatedOutput",
 ]
+

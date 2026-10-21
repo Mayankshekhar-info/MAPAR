@@ -76,6 +76,7 @@ import { ConfirmDialog } from "../../../components/ConfirmDialog";
 import CloudUploadOutlinedIcon from "@mui/icons-material/CloudUploadOutlined";
 import StorageIcon from "@mui/icons-material/Storage";
 import SettingsSuggestIcon from "@mui/icons-material/SettingsSuggest";
+import { FormulaCalculationSection } from "./FormulaCalculationSection";
 
 interface KPIBuilderModalProps {
   open: boolean;
@@ -1507,7 +1508,7 @@ export const KPIBuilderModal: React.FC<KPIBuilderModalProps> = ({
                                           {/* Rule Inputs in Exact Sequence: 1. Achieved Data Column Name, 2. Standard Value, 3. Performance Direction */}
                                           <Grid container spacing={2} alignItems="flex-start">
                                             {/* 1. Achieved Data Column Name */}
-                                            <Grid size={{ xs: 12, md: 5 }}>
+                                            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
                                               <Autocomplete
                                                 freeSolo
                                                 options={availableColumns.map((col) => col.label || col.name)}
@@ -1576,7 +1577,7 @@ export const KPIBuilderModal: React.FC<KPIBuilderModalProps> = ({
                                             </Grid>
 
                                             {/* 2. Standard Value */}
-                                            <Grid size={{ xs: 12, sm: 6, md: 3.5 }}>
+                                            <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
                                               <TextField
                                                 fullWidth
                                                 size="small"
@@ -1586,12 +1587,35 @@ export const KPIBuilderModal: React.FC<KPIBuilderModalProps> = ({
                                                 value={rule.standard_value ?? ""}
                                                 onChange={(e) => handleUpdateRule(idx, rIdx, "standard_value", e.target.value)}
                                                 placeholder="e.g. 98.8 or 60"
-                                                helperText="Target benchmark for this column"
+                                                helperText="Target benchmark"
                                               />
                                             </Grid>
 
+                                            {/* 2b. Unit (Directly Beside Standard Value) */}
+                                            <Grid size={{ xs: 12, sm: 6, md: 2.5 }}>
+                                              <TextField
+                                                select
+                                                fullWidth
+                                                size="small"
+                                                label="Unit"
+                                                value={rule.unit || comp.unit || "%"}
+                                                onChange={(e) => {
+                                                  handleUpdateRule(idx, rIdx, "unit", e.target.value);
+                                                  handleUpdateComparison(idx, "unit", e.target.value);
+                                                }}
+                                                helperText="Benchmark unit"
+                                              >
+                                                <MenuItem value="%">Percentage (%)</MenuItem>
+                                                <MenuItem value="Minutes">Minutes</MenuItem>
+                                                <MenuItem value="Hours">Hours</MenuItem>
+                                                <MenuItem value="Seconds">Seconds</MenuItem>
+                                                <MenuItem value="Count">Count</MenuItem>
+                                                <MenuItem value="Units">Units</MenuItem>
+                                              </TextField>
+                                            </Grid>
+
                                             {/* 3. Performance Direction */}
-                                            <Grid size={{ xs: 12, sm: 6, md: 3.5 }}>
+                                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                                               <TextField
                                                 select
                                                 fullWidth
@@ -1621,156 +1645,25 @@ export const KPIBuilderModal: React.FC<KPIBuilderModalProps> = ({
                                   </Stack>
                                 </Grid>
 
-                                {/* Additional Settings Accordion (Preserving format, display, thresholds, and aggregation) */}
+                                {/* Dedicated Mathematical Calculation & Formula Section (Replaces legacy Additional Settings) */}
                                 <Grid size={{ xs: 12 }}>
-                                  <Accordion
-                                    disableGutters
-                                    elevation={0}
-                                    sx={{
-                                      border: "1px solid",
-                                      borderColor: "divider",
-                                      borderRadius: "8px !important",
-                                      "&:before": { display: "none" },
-                                      bgcolor: "grey.50",
+                                  <FormulaCalculationSection
+                                    comparison={comp}
+                                    rule={compRules[0]}
+                                    availableTemplates={datasets}
+                                    selectedTemplateId={currentDatasetId}
+                                    onSelectTemplate={(templateId) => {
+                                      handleUpdateComparisonDataSource(idx, "dataset_id", templateId);
+                                      const selT = datasets.find((d) => d.id === templateId);
+                                      if (selT) {
+                                        handleUpdateComparisonDataSource(idx, "dataset_name", selT.name);
+                                      }
+                                      loadDatasetColumns(templateId);
                                     }}
-                                  >
-                                    <AccordionSummary expandIcon={<ExpandMoreIcon fontSize="small" />} sx={{ minHeight: 40, py: 0 }}>
-                                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                        <SettingsSuggestIcon fontSize="small" color="action" />
-                                        <Typography variant="caption" sx={{ fontWeight: 700, color: "text.secondary" }}>
-                                          Additional Settings & Thresholds (Unit, Color, Thresholds, Aggregation)
-                                        </Typography>
-                                      </Box>
-                                    </AccordionSummary>
-                                    <AccordionDetails sx={{ pt: 1, pb: 2, bgcolor: "background.paper", borderTop: "1px solid", borderColor: "divider" }}>
-                                      <Grid container spacing={2}>
-                                        {/* Metric Label */}
-                                        <Grid size={{ xs: 12, sm: 4 }}>
-                                          <TextField
-                                            fullWidth
-                                            size="small"
-                                            label="Metric Label"
-                                            value={comp.metric_label || ""}
-                                            onChange={(e) => handleUpdateComparison(idx, "metric_label", e.target.value)}
-                                            placeholder="e.g. Availability Ratio"
-                                          />
-                                        </Grid>
-
-                                        {/* Unit / Format */}
-                                        <Grid size={{ xs: 12, sm: 4 }}>
-                                          <TextField
-                                            fullWidth
-                                            size="small"
-                                            label="Unit / Format"
-                                            value={comp.unit || "%"}
-                                            onChange={(e) => handleUpdateComparison(idx, "unit", e.target.value)}
-                                            placeholder="e.g. %, minutes, count"
-                                          />
-                                          <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap", mt: 0.5 }}>
-                                            {UNIT_SUGGESTIONS.map((u) => (
-                                              <Chip
-                                                key={u}
-                                                size="small"
-                                                label={u}
-                                                onClick={() => handleUpdateComparison(idx, "unit", u)}
-                                                sx={{ height: 18, fontSize: "0.65rem", cursor: "pointer" }}
-                                              />
-                                            ))}
-                                          </Box>
-                                        </Grid>
-
-                                        {/* Comparison Display Color */}
-                                        <Grid size={{ xs: 12, sm: 4 }}>
-                                          <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", display: "block", mb: 0.5 }}>
-                                            Display Color
-                                          </Typography>
-                                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                            {COLOR_PRESETS.map((c) => (
-                                              <Box
-                                                key={c.hex}
-                                                onClick={() => handleUpdateComparison(idx, "display_color", c.hex)}
-                                                sx={{
-                                                  width: 22,
-                                                  height: 22,
-                                                  borderRadius: "50%",
-                                                  bgcolor: c.hex,
-                                                  cursor: "pointer",
-                                                  border: comp.display_color === c.hex ? "2px solid #000" : "1px solid rgba(0,0,0,0.1)",
-                                                  transform: comp.display_color === c.hex ? "scale(1.2)" : "scale(1)",
-                                                  transition: "all 0.15s ease",
-                                                }}
-                                              />
-                                            ))}
-                                          </Box>
-                                        </Grid>
-
-                                        {/* Warning Threshold */}
-                                        <Grid size={{ xs: 12, sm: 6 }}>
-                                          <TextField
-                                            fullWidth
-                                            size="small"
-                                            type="number"
-                                            label="Warning Threshold (Optional)"
-                                            value={comp.warning_threshold ?? ""}
-                                            onChange={(e) => handleUpdateComparison(idx, "warning_threshold", e.target.value)}
-                                            placeholder="e.g. 95.0 or 65"
-                                            helperText="Amber warning indicator boundary"
-                                          />
-                                        </Grid>
-
-                                        {/* Critical Threshold */}
-                                        <Grid size={{ xs: 12, sm: 6 }}>
-                                          <TextField
-                                            fullWidth
-                                            size="small"
-                                            type="number"
-                                            label="Critical Threshold (Optional)"
-                                            value={comp.critical_threshold ?? ""}
-                                            onChange={(e) => handleUpdateComparison(idx, "critical_threshold", e.target.value)}
-                                            placeholder="e.g. 90.0 or 80"
-                                            helperText="Red critical breach indicator boundary"
-                                          />
-                                        </Grid>
-
-                                        {/* Aggregation Method */}
-                                        <Grid size={{ xs: 12, sm: 6 }}>
-                                          <TextField
-                                            select
-                                            fullWidth
-                                            size="small"
-                                            label="Aggregation Method"
-                                            value={comp.data_source?.aggregation || "AVG"}
-                                            onChange={(e) => handleUpdateComparisonDataSource(idx, "aggregation", e.target.value as any)}
-                                            helperText="Calculation applied across matched uploaded records"
-                                          >
-                                            <MenuItem value="AVG">AVERAGE (Mean)</MenuItem>
-                                            <MenuItem value="SUM">SUM (Total)</MenuItem>
-                                            <MenuItem value="COUNT">COUNT (Total Rows)</MenuItem>
-                                            <MenuItem value="DISTINCT_COUNT">DISTINCT COUNT (Unique Values)</MenuItem>
-                                            <MenuItem value="MIN">MIN (Minimum Value)</MenuItem>
-                                            <MenuItem value="MAX">MAX (Maximum Value)</MenuItem>
-                                          </TextField>
-                                        </Grid>
-
-                                        {/* Reporting Period Behavior */}
-                                        <Grid size={{ xs: 12, sm: 6 }}>
-                                          <TextField
-                                            select
-                                            fullWidth
-                                            size="small"
-                                            label="Reporting Period Scope"
-                                            value={comp.data_source?.period_behavior || "MATCH_PERIOD"}
-                                            onChange={(e) => handleUpdateComparisonDataSource(idx, "period_behavior", e.target.value as any)}
-                                            helperText="How uploaded batch periods are filtered"
-                                          >
-                                            <MenuItem value="MATCH_PERIOD">Match Active Reporting Period</MenuItem>
-                                            <MenuItem value="LATEST_UPLOAD">Latest Uploaded Batch</MenuItem>
-                                            <MenuItem value="ALL_RECORDS">All Persisted Batches</MenuItem>
-                                          </TextField>
-                                        </Grid>
-                                      </Grid>
-                                    </AccordionDetails>
-                                  </Accordion>
+                                    availableColumns={availableColumns}
+                                    onUpdateRule={(field, val) => handleUpdateRule(idx, 0, field as any, val)}
+                                    onUpdateComparison={(field, val) => handleUpdateComparison(idx, field as any, val)}
+                                  />
                                 </Grid>
 
                                 {/* Live Verification & Rule Summary Banner */}

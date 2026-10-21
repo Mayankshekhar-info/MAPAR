@@ -6,8 +6,9 @@ Blocks attribute access, dunders, imports, and arbitrary execution.
 """
 
 import ast
+import re
 import math
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Dict, Any, Set, Tuple, Optional
 
 
@@ -17,6 +18,21 @@ class SafeFormulaError(Exception):
 
 class DivisionByZeroError(SafeFormulaError):
     pass
+
+
+def _safe_round(*args):
+    if len(args) == 1:
+        val = args[0]
+        if isinstance(val, Decimal):
+            return val.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        return round(val)
+    elif len(args) == 2:
+        val, places = args[0], int(args[1])
+        if isinstance(val, Decimal):
+            prec_str = "1." + ("0" * places) if places > 0 else "1"
+            return val.quantize(Decimal(prec_str), rounding=ROUND_HALF_UP)
+        return round(val, places)
+    raise SafeFormulaError("round() takes 1 or 2 arguments.")
 
 
 class SafeExpressionVisitor(ast.NodeVisitor):
@@ -47,7 +63,7 @@ class SafeExpressionVisitor(ast.NodeVisitor):
 
     ALLOWED_FUNCTIONS = {
         "abs": abs,
-        "round": round,
+        "round": _safe_round,
         "min": min,
         "max": max,
         "sum": lambda *args: sum(args[0]) if len(args) == 1 and isinstance(args[0], (list, tuple)) else sum(args),
@@ -58,6 +74,7 @@ class SafeExpressionVisitor(ast.NodeVisitor):
         "floor": math.floor,
         "if_else": lambda cond, if_true, if_false: if_true if cond else if_false,
     }
+
 
     def __init__(self, allowed_variables: Optional[Set[str]] = None):
         self.allowed_variables = set(allowed_variables) if allowed_variables else None
@@ -82,7 +99,7 @@ class SafeExpressionVisitor(ast.NodeVisitor):
             raise SafeFormulaError("Only loading variables is permitted.")
         var_name = node.id
         self.found_variables.add(var_name)
-        if self.allowed_variables is not None and var_name not in self.allowed_variables and var_name not in self.ALLOWED_FUNCTIONS:
+        if self.allowed_variables is not None and var_name not in self.allowed_variables and var_name.lower() not in self.ALLOWED_FUNCTIONS:
             raise SafeFormulaError(f"Unknown or unauthorized variable reference: '{var_name}'")
         return var_name
 
@@ -127,13 +144,34 @@ class SafeExpressionVisitor(ast.NodeVisitor):
         if not isinstance(node.func, ast.Name):
             raise SafeFormulaError("Dynamic or nested method calls are strictly forbidden.")
         func_name = node.func.id
-        if func_name not in self.ALLOWED_FUNCTIONS:
+        if func_name.lower() not in self.ALLOWED_FUNCTIONS:
             raise SafeFormulaError(f"Function '{func_name}' is not in the approved safe calculation whitelist.")
         args = [self.visit(arg) for arg in node.args]
-        return ("CALL", func_name, args)
+        return ("CALL", func_name.lower(), args)
 
 
 class SafeFormulaEvaluator:
+    @classmethod
+    def preprocess_expression(cls, expression: str) -> Tuple[str, Dict[str, str]]:
+        """
+        Converts bracketed column references e.g. [Downtime] or [Total Time]
+        into safe variable tokens e.g. col_downtime, and returns the token mapping.
+        """
+        if not expression:
+            return "", {}
+        bracket_pattern = re.compile(r'\[([^\]]+)\]')
+        token_map: Dict[str, str] = {}
+
+        def _replace_token(match):
+            col_name = match.group(1).strip()
+            clean_token = re.sub(r'[^a-zA-Z0-9_]', '_', col_name).strip('_')
+            token = f"col_{clean_token}"
+            token_map[token] = col_name
+            return token
+
+        cleaned = bracket_pattern.sub(_replace_token, expression)
+        return cleaned, token_map
+
     @classmethod
     def validate_syntax(cls, expression: str, allowed_variables: Optional[Set[str]] = None) -> Tuple[bool, Optional[str], Set[str]]:
         """
@@ -143,16 +181,28 @@ class SafeFormulaEvaluator:
         if not expression or not expression.strip():
             return True, None, set()
 
-        cleaned = expression.strip()
+        cleaned_expr, token_map = cls.preprocess_expression(expression.strip())
+        effective_allowed = set(allowed_variables) if allowed_variables else None
+        if effective_allowed is not None and token_map:
+            # Map column names in token_map to allowed variables
+            for tok, orig_name in token_map.items():
+                if orig_name in effective_allowed or orig_name.lower() in {v.lower() for v in effective_allowed}:
+                    effective_allowed.add(tok)
+
         try:
-            tree = ast.parse(cleaned, mode="eval")
+            tree = ast.parse(cleaned_expr, mode="eval")
         except SyntaxError as e:
             return False, f"Syntax error at position {e.offset}: {e.msg}", set()
 
-        visitor = SafeExpressionVisitor(allowed_variables)
+
+        visitor = SafeExpressionVisitor(effective_allowed)
         try:
             visitor.visit(tree)
-            return True, None, visitor.found_variables
+            # Map detected variable tokens back to original names if from brackets
+            mapped_vars = set()
+            for v in visitor.found_variables:
+                mapped_vars.add(token_map.get(v, v))
+            return True, None, mapped_vars
         except SafeFormulaError as err:
             return False, str(err), visitor.found_variables
         except Exception as ex:
@@ -167,7 +217,18 @@ class SafeFormulaEvaluator:
         if not expression or not expression.strip():
             raise SafeFormulaError("Empty formula expression cannot be evaluated.")
 
-        cleaned = expression.strip()
+        cleaned, token_map = cls.preprocess_expression(expression.strip())
+        eval_context = dict(context)
+        if token_map:
+            for tok, orig_name in token_map.items():
+                if orig_name in context:
+                    eval_context[tok] = context[orig_name]
+                else:
+                    for k, v in context.items():
+                        if k.strip().lower() == orig_name.strip().lower():
+                            eval_context[tok] = v
+                            break
+
         tree = ast.parse(cleaned, mode="eval")
 
         def _eval_node(node):
@@ -179,8 +240,16 @@ class SafeFormulaEvaluator:
 
             if isinstance(node, ast.Name):
                 name = node.id
-                if name in context:
-                    val = context[name]
+                val = eval_context.get(name)
+                found = name in eval_context
+                if not found:
+                    name_lower = name.lower()
+                    for k, v in eval_context.items():
+                        if k.lower() == name_lower:
+                            val = v
+                            found = True
+                            break
+                if found:
                     if val is None:
                         return Decimal("0")
                     if isinstance(val, (int, float, Decimal)):
@@ -189,7 +258,8 @@ class SafeFormulaEvaluator:
                         return Decimal(str(val).replace("%", "").strip())
                     except (InvalidOperation, ValueError):
                         return val
-                raise SafeFormulaError(f"Missing required parameter value: '{name}'")
+                raise SafeFormulaError(f"Missing required parameter value: '{token_map.get(name, name)}'")
+
 
             if isinstance(node, ast.UnaryOp):
                 operand = _eval_node(node.operand)
@@ -261,13 +331,15 @@ class SafeFormulaEvaluator:
                 return _eval_node(node.orelse)
 
             if isinstance(node, ast.Call):
-                func_name = node.func.id if isinstance(node.func, ast.Name) else str(getattr(node.func, "id", ""))
+                raw_func_name = node.func.id if isinstance(node.func, ast.Name) else str(getattr(node.func, "id", ""))
+                func_name = raw_func_name.lower()
                 fn = SafeExpressionVisitor.ALLOWED_FUNCTIONS.get(func_name)
                 if not fn:
-                    raise SafeFormulaError(f"Function '{func_name}' not permitted.")
+                    raise SafeFormulaError(f"Function '{raw_func_name}' not permitted.")
                 evaluated_args = [_eval_node(arg) for arg in node.args]
                 raw_res = fn(*evaluated_args)
                 return Decimal(str(raw_res)) if isinstance(raw_res, (int, float, Decimal)) else raw_res
+
 
             raise SafeFormulaError(f"Unsupported node type: {type(node).__name__}")
 

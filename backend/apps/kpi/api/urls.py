@@ -7,6 +7,7 @@ urlpatterns = [
     path("definitions/<int:pk>/duplicate/", views.KPIDuplicateView.as_view(), name="kpi-definition-duplicate"),
     path("definitions/<int:pk>/calculate/", views.KPICalculateView.as_view(), name="kpi-calculate"),
     path("validate-formula/", views.KPIValidateFormulaView.as_view(), name="kpi-validate-formula"),
+    path("preview-formula/", views.KPIPreviewFormulaView.as_view(), name="kpi-preview-formula"),
     path("test-logic/", views.KPITestLogicView.as_view(), name="kpi-test-logic"),
     path("sources/datasets/", views.KPIDatasetListView.as_view(), name="kpi-sources-datasets"),
     path("sources/datasets/<int:dataset_id>/fields/", views.KPIDatasetFieldListView.as_view(), name="kpi-sources-fields"),
