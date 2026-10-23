@@ -5,6 +5,8 @@ import { LoginCredentials } from "../types/auth.types";
 import { useAuthStore } from "./useAuthStore";
 import axios from "axios";
 
+import { resolveSafeLandingRoute } from "../../../app/navigation/navigation.resolver";
+
 export function useLogin() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -27,9 +29,10 @@ export function useLogin() {
       const response = await authService.login(credentials);
       setUser(response.user);
 
-      // Navigate to intended route or default landing
+      // Determine safe landing route based on user's authorized modules
       const from = (location.state as { from?: { pathname?: string } })?.from?.pathname || "/";
-      navigate(from, { replace: true });
+      const safeTarget = resolveSafeLandingRoute(from, response.user);
+      navigate(safeTarget, { replace: true });
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         if (err.response?.status === 401) {

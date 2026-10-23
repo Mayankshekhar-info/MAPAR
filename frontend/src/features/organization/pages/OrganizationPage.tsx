@@ -107,12 +107,15 @@ export const OrganizationPage: React.FC = () => {
   };
 
   // Open Create Child Node (dynamically determined by selected node level)
-  const handleOpenAddChild = () => {
+  const handleOpenAddChild = (specificLevel?: HierarchyLevel) => {
     if (!selectedNode) {
       handleOpenAddCompany();
       return;
     }
-    const nextLevel = selectedNodeDetail?.allowed_child_level || getNextChildLevel(selectedNode.level);
+    const nextLevel =
+      specificLevel ||
+      selectedNodeDetail?.allowed_child_level ||
+      getNextChildLevel(selectedNode.level);
     if (!nextLevel) {
       showToast("Cannot add child: this is the lowest hierarchy level.", "error");
       return;
@@ -213,7 +216,12 @@ export const OrganizationPage: React.FC = () => {
       {/* 1. Page Header */}
       <OrganizationHeader
         onAddCompany={handleOpenAddCompany}
-        onAddChild={nextChildLevel ? handleOpenAddChild : undefined}
+        onAddChild={nextChildLevel ? () => handleOpenAddChild() : undefined}
+        onAddCircle={
+          selectedNode?.level === "MAIN_COMPANY"
+            ? () => handleOpenAddChild("CIRCLE")
+            : undefined
+        }
         selectedNodeLabel={selectedNode?.name}
         addChildLabel={addChildLabel}
       />

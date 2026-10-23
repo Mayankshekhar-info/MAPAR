@@ -5,12 +5,12 @@ import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
-import Divider from "@mui/material/Divider";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
 import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import SecurityOutlinedIcon from "@mui/icons-material/SecurityOutlined";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 
 import { colorTokens, radiusTokens, shadowTokens } from "../../../app/theme/tokens";
 import { OrganizationScopeItem } from "../types/users.types";
@@ -51,6 +51,41 @@ export const OrganizationScopeCard: React.FC<OrganizationScopeCardProps> = ({
     steps.push(scope.hierarchy_breadcrumb || "All Authorized Descendants");
   }
 
+  // Resolve scope anchor level
+  let anchorLevel = "CIRCLE";
+  let anchorName = scope.circle_name || "Circle";
+  let coverageNote = "Access is strictly confined to this Circle and its descendant domains, departments, and teams. Cross-circle data from sibling circles (e.g. Rajasthan, Maharashtra) is blocked on all dashboards, lists, charts, and API endpoints.";
+
+  if (scope.team_id || scope.sub_department_id) {
+    anchorLevel = "TEAM";
+    anchorName = scope.team_name || scope.sub_department_name || "Team";
+    coverageNote = "Access is strictly confined to this specialized Team/Sub-department.";
+  } else if (scope.department_id) {
+    anchorLevel = "DEPARTMENT";
+    anchorName = scope.department_name || "Department";
+    coverageNote = "Access is confined to this Department and its child Teams.";
+  } else if (scope.domain_id) {
+    anchorLevel = "DOMAIN";
+    anchorName = scope.domain_name || "Domain";
+    coverageNote = "Access is confined to this Domain and its child Departments and Teams.";
+  } else if (scope.circle_id) {
+    anchorLevel = "CIRCLE";
+    anchorName = scope.circle_name || "Circle";
+    coverageNote = `Access is strictly confined to ${scope.circle_name || "this Circle"} and its descendant domains, departments, and teams. Sibling circles and unrelated organizations are blocked.`;
+  } else if (scope.project_id) {
+    anchorLevel = "PROJECT";
+    anchorName = scope.project_name || "Project";
+    coverageNote = `Access is permitted to ${scope.project_name || "this Project"} and all child circles and descendants beneath it.`;
+  } else if (scope.sub_company_id) {
+    anchorLevel = "SUB_COMPANY";
+    anchorName = scope.sub_company_name || "Sub Company";
+    coverageNote = `Access is permitted to ${scope.sub_company_name || "this Sub Company"} and all projects, circles, and departments beneath it.`;
+  } else if (scope.main_company_id) {
+    anchorLevel = "MAIN_COMPANY";
+    anchorName = scope.main_company_name || "Main Company";
+    coverageNote = `Access is permitted across the entire organization tree under ${scope.main_company_name || "this Main Company"}.`;
+  }
+
   const actions = scope.actions && scope.actions.length > 0
     ? scope.actions
     : [
@@ -62,7 +97,7 @@ export const OrganizationScopeCard: React.FC<OrganizationScopeCardProps> = ({
       ].filter(Boolean) as string[];
 
   const actionLabels: Record<string, string> = {
-    view: "View",
+    view: "View Data",
     manage: "Manage",
     create: "Create",
     update: "Update",
@@ -95,12 +130,12 @@ export const OrganizationScopeCard: React.FC<OrganizationScopeCardProps> = ({
       }}
     >
       {/* Header bar */}
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1.5 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1.5, flexWrap: "wrap", gap: 1 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
           <Box
             sx={{
-              width: 28,
-              height: 28,
+              width: 30,
+              height: 30,
               borderRadius: radiusTokens.xs,
               bgcolor: colorTokens.primary.lighter,
               color: colorTokens.primary.main,
@@ -109,11 +144,26 @@ export const OrganizationScopeCard: React.FC<OrganizationScopeCardProps> = ({
               justifyContent: "center",
             }}
           >
-            <AccountTreeOutlinedIcon sx={{ fontSize: 16 }} />
+            <AccountTreeOutlinedIcon sx={{ fontSize: 17 }} />
           </Box>
-          <Typography variant="subtitle2" sx={{ fontWeight: 800, color: colorTokens.text.primary, letterSpacing: "-0.01em" }}>
-            Organization Access Scope #{index + 1}
-          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: colorTokens.text.primary }}>
+              Scope #{index + 1}: {anchorName}
+            </Typography>
+            <Chip
+              label={anchorLevel.replace("_", " ")}
+              size="small"
+              sx={{
+                height: 20,
+                fontSize: "0.68rem",
+                fontWeight: 800,
+                fontFamily: "monospace",
+                bgcolor: anchorLevel === "CIRCLE" ? "#E0F2FE" : "#F1F5F9",
+                color: anchorLevel === "CIRCLE" ? "#0369A1" : "#475569",
+                border: `1px solid ${anchorLevel === "CIRCLE" ? "#BAE6FD" : "#E2E8F0"}`,
+              }}
+            />
+          </Box>
         </Box>
 
         {!readOnly && (
@@ -169,21 +219,24 @@ export const OrganizationScopeCard: React.FC<OrganizationScopeCardProps> = ({
           bgcolor: "#F8FAFC",
           borderRadius: radiusTokens.sm,
           border: `1px solid ${colorTokens.workspace.border}`,
-          mb: 2,
+          mb: 1.5,
         }}
       >
+        <Typography variant="caption" sx={{ color: colorTokens.text.muted, display: "block", mb: 0.75, fontWeight: 700, textTransform: "uppercase", fontSize: "0.68rem", letterSpacing: "0.05em" }}>
+          Full Hierarchy Path:
+        </Typography>
         <Stack direction="row" flexWrap="wrap" alignItems="center" gap={0.75}>
           {steps.map((step, sIdx) => (
             <React.Fragment key={sIdx}>
               <Box
                 sx={{
-                  px: 1,
+                  px: 1.25,
                   py: 0.35,
                   bgcolor: sIdx === steps.length - 1 ? colorTokens.primary.lighter : "#FFFFFF",
                   border: `1px solid ${sIdx === steps.length - 1 ? colorTokens.primary.light : "#E2E8F0"}`,
                   borderRadius: radiusTokens.xs,
                   color: sIdx === steps.length - 1 ? colorTokens.primary.main : colorTokens.text.primary,
-                  fontWeight: sIdx === steps.length - 1 ? 700 : 500,
+                  fontWeight: sIdx === steps.length - 1 ? 800 : 500,
                   fontSize: "0.8rem",
                 }}
               >
@@ -199,12 +252,31 @@ export const OrganizationScopeCard: React.FC<OrganizationScopeCardProps> = ({
         </Stack>
       </Box>
 
+      {/* Boundary Explanation Notice */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 1,
+          p: 1.25,
+          bgcolor: "#F0FDF4",
+          border: "1px solid #BBF7D0",
+          borderRadius: radiusTokens.xs,
+          mb: 1.5,
+        }}
+      >
+        <InfoOutlinedIcon sx={{ fontSize: 16, color: "#15803D", mt: 0.1, flexShrink: 0 }} />
+        <Typography variant="caption" sx={{ color: "#166534", lineHeight: 1.4, fontWeight: 500 }}>
+          {coverageNote}
+        </Typography>
+      </Box>
+
       {/* Access Permissions / Actions */}
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <SecurityOutlinedIcon sx={{ fontSize: 16, color: colorTokens.text.muted }} />
           <Typography variant="caption" sx={{ fontWeight: 700, color: colorTokens.text.secondary }}>
-            Access Rights:
+            Permitted Actions:
           </Typography>
         </Box>
 

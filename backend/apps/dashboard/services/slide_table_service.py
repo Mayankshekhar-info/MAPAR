@@ -432,7 +432,7 @@ class SlideTableService:
             if batch_match:
                 batch_id_str = batch_match.group(1)
                 try:
-                    from apps.imports.models.import_models import ImportBatch
+                    from apps.imports.models import ImportBatch
                     batch = (
                         ImportBatch.objects.filter(batch_id=batch_id_str)
                         .select_related("template", "template_version", "uploaded_by")

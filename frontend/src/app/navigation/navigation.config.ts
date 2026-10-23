@@ -100,7 +100,7 @@ export const MAPAR_NAVIGATION_CONFIG: NavigationGroup[] = [
     items: [
       {
         id: "governance",
-        label: "Governance & Risk",
+        label: "Governance and Action",
         path: "/governance",
         iconName: "Shield",
         moduleCode: "governance",

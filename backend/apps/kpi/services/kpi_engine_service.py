@@ -537,8 +537,12 @@ class KPIEngineService:
         c_records_considered = 0
 
         # Resolve Uploaded Dataset
+        template: Optional[UploadTemplate] = None
+        batches: List[ImportBatch] = []
+        active_batches: List[ImportBatch] = []
+        matched_rows: List[ImportStagedRow] = []
+
         if ds_type == "UPLOAD":
-            template = None
             if dataset_id:
                 template = UploadTemplate.objects.filter(id=dataset_id).first()
             if not template:
@@ -616,7 +620,7 @@ class KPIEngineService:
 
         # Parse and prepare rules to evaluate
         raw_rules = comp.get("rules")
-        rules_to_eval = []
+        rules_to_eval: List[Dict[str, Any]] = []
         if isinstance(raw_rules, list) and len(raw_rules) > 0:
             for idx, r in enumerate(raw_rules):
                 if isinstance(r, dict):
@@ -644,8 +648,8 @@ class KPIEngineService:
 
         evaluated_rules = []
         for r in rules_to_eval:
-            r_col = (r.get("achieved_data_column") or "").strip()
-            r_pdir = r.get("performance_direction") or "HIGHER_BETTER"
+            r_col = str(r.get("achieved_data_column") or "").strip()
+            r_pdir = str(r.get("performance_direction") or "HIGHER_BETTER")
             r_std_raw = r.get("standard_value")
             r_target_num: Optional[float] = None
             r_target: Any = None
@@ -746,7 +750,7 @@ class KPIEngineService:
                                 if len(numeric_vals) == 1:
                                     d_val = numeric_vals[0]
                                 else:
-                                    agg = (r.get("aggregation") or data_source.get("aggregation") or "AVG").upper()
+                                    agg = str(r.get("aggregation") or data_source.get("aggregation") or "AVG").upper()
                                     d_val = cls._compute_aggregation(vals, agg)
 
                                 if d_val is None:
@@ -1168,6 +1172,10 @@ class KPIEngineService:
         error_msg = ""
         calculated_value: Optional[Decimal] = None
         target_val: Optional[Decimal] = None
+        variance_to_target: Optional[Decimal] = None
+        variance_percentage: Optional[Decimal] = None
+        achievement_percentage: Optional[Decimal] = None
+        rag_status: str = KPICalculationResult.RAGStatus.NEUTRAL
 
         p_cfg = getattr(kpi, "presentation_config", {}) or {}
         configured_comparisons = p_cfg.get("comparisons", [])
@@ -1547,6 +1555,10 @@ class KPIEngineService:
             "refined_records_preview": [r.raw_data for r in matched_rows[:50]],
             "funnel_breakdown": funnel_breakdown,
             "diagnostics": diagnostics,
+            "lineage_metadata": {
+                **diagnostics,
+                "comparisons_summary": processed_comparisons,
+            },
             "calculated_at": res_obj.calculated_at.isoformat(),
         }
 

@@ -11,7 +11,10 @@ import { AccessScopesPage } from "../../features/permissions";
 import { KPIRegistryPage } from "../../features/kpi";
 // Master Data section disabled
 // import { MasterDataPage } from "../../features/master-data";
+import { GovernanceDashboardPage, TaskDetailPage } from "../../features/governance";
+import { NotificationsAdminPage } from "../../features/notifications";
 import { ModulePlaceholderPage } from "../layout/ModulePlaceholderPage";
+
 
 
 
@@ -76,15 +79,27 @@ export const router = createBrowserRouter([
       },
       {
         path: "governance",
-        element: <ModulePlaceholderPage />,
+        element: <GovernanceDashboardPage mode="governance" />,
+      },
+      {
+        path: "governance/tasks/:id",
+        element: <TaskDetailPage />,
       },
       {
         path: "audit",
-        element: <ModulePlaceholderPage />,
+        element: <GovernanceDashboardPage mode="audit" />,
+      },
+      {
+        path: "audit/tasks/:id",
+        element: <TaskDetailPage />,
       },
       {
         path: "documents",
-        element: <ModulePlaceholderPage />,
+        element: <GovernanceDashboardPage mode="documents" />,
+      },
+      {
+        path: "documents/tasks/:id",
+        element: <TaskDetailPage />,
       },
       {
         path: "finance",
@@ -146,7 +161,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "notifications",
-        element: <ModulePlaceholderPage />,
+        element: <NotificationsAdminPage />,
       },
     ],
   },

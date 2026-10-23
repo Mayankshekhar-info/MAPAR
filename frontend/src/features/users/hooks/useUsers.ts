@@ -54,3 +54,12 @@ export function useToggleUserStatus() {
     },
   });
 }
+
+export function useModuleCatalog() {
+  return useQuery({
+    queryKey: ["authorization", "modules"],
+    queryFn: () => usersService.getModuleCatalog(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+

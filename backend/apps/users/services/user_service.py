@@ -114,6 +114,12 @@ class UserService:
                 assigned_by=admin_user,
             )
 
+        # Module Access Permissions Dimension
+        module_perms_data = data.get("module_permissions")
+        if module_perms_data:
+            from apps.authorization.services.module_permission_service import ModulePermissionService
+            ModulePermissionService.sync_user_module_permissions(user, module_perms_data, admin_user)
+
         # Multi-Scope Assignment Support (Requirement 3, 4, 15)
         scopes_list = data.get("scopes") or []
         if scopes_list:
@@ -282,6 +288,11 @@ class UserService:
         if "scopes" in data and isinstance(data["scopes"], list):
             from apps.authorization.services.scope_service import ScopeService
             ScopeService.sync_user_scopes(user, data["scopes"], admin_user)
+
+        # Module Access Permissions Synchronization
+        if "module_permissions" in data and isinstance(data["module_permissions"], list):
+            from apps.authorization.services.module_permission_service import ModulePermissionService
+            ModulePermissionService.sync_user_module_permissions(user, data["module_permissions"], admin_user)
 
         HierarchyAuditLog.objects.create(
             action="UPDATE",

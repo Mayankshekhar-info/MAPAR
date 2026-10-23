@@ -17,18 +17,13 @@ import Stack from "@mui/material/Stack";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PersonAddOutlinedIcon from "@mui/icons-material/PersonAddOutlined";
 import AdminPanelSettingsOutlinedIcon from "@mui/icons-material/AdminPanelSettingsOutlined";
-import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
-import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import VpnKeyOutlinedIcon from "@mui/icons-material/VpnKeyOutlined";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 
 import { colorTokens, radiusTokens, shadowTokens } from "../../../app/theme/tokens";
-import { CreateUserPayload, OrganizationScopeItem } from "../types/users.types";
+import { CreateUserPayload } from "../types/users.types";
 import { useCreateUser } from "../hooks/useUsers";
 import { useRolesList } from "../../roles/hooks/useRoles";
-import { OrganizationScopeCard } from "../components/OrganizationScopeCard";
-import { OrganizationScopeDialog } from "../components/OrganizationScopeDialog";
-import { EffectiveAccessSummaryCard } from "../components/EffectiveAccessSummaryCard";
 
 export const CreateUserPage: React.FC = () => {
   const navigate = useNavigate();
@@ -47,12 +42,6 @@ export const CreateUserPage: React.FC = () => {
   // Form Fields - Enterprise Role
   const [roleId, setRoleId] = useState<number | "">("");
 
-  // Organization Access Scopes (Multi-Scope System)
-  const [scopes, setScopes] = useState<OrganizationScopeItem[]>([]);
-  const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
-  const [editingScope, setEditingScope] = useState<OrganizationScopeItem | null>(null);
-  const [editingScopeIndex, setEditingScopeIndex] = useState<number | null>(null);
-
   // Validation & Error Feedback
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
@@ -60,31 +49,6 @@ export const CreateUserPage: React.FC = () => {
   // Queries & Mutations
   const { data: rolesData, isLoading: loadingRoles } = useRolesList({ status: "ACTIVE" });
   const createUserMutation = useCreateUser();
-
-  // Dialog Handlers
-  const handleOpenAddScope = () => {
-    setEditingScope(null);
-    setEditingScopeIndex(null);
-    setScopeDialogOpen(true);
-  };
-
-  const handleOpenEditScope = (scope: OrganizationScopeItem, index: number) => {
-    setEditingScope(scope);
-    setEditingScopeIndex(index);
-    setScopeDialogOpen(true);
-  };
-
-  const handleRemoveScope = (index: number) => {
-    setScopes((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleSaveScope = (savedScope: OrganizationScopeItem, editIndex: number | null) => {
-    if (editIndex !== null) {
-      setScopes((prev) => prev.map((s, idx) => (idx === editIndex ? savedScope : s)));
-    } else {
-      setScopes((prev) => [...prev, savedScope]);
-    }
-  };
 
   // Client-side Validation
   const validateForm = (): boolean => {
@@ -103,7 +67,7 @@ export const CreateUserPage: React.FC = () => {
     }
 
     if (!password) {
-      errors.password = "Initial password is required.";
+      errors.password = "Password is required.";
     } else if (password.length < 8) {
       errors.password = "Password must be at least 8 characters.";
     }
@@ -114,10 +78,6 @@ export const CreateUserPage: React.FC = () => {
 
     if (!roleId) {
       errors.roleId = "Enterprise role assignment is required.";
-    }
-
-    if (scopes.length === 0) {
-      errors.scopes = "Please assign at least one organization access scope.";
     }
 
     setFormErrors(errors);
@@ -135,12 +95,6 @@ export const CreateUserPage: React.FC = () => {
 
     const selectedRole = rolesData?.find((r) => r.id === roleId);
 
-    // Primary legacy scope fallback for backward compatibility
-    const firstScope = scopes[0];
-    const resolvedCircleId = firstScope?.circle_id || null;
-    const resolvedTeamId = firstScope?.team_id || firstScope?.sub_department_id || null;
-    const resolvedDept = department || firstScope?.department_name || "";
-
     const payload: CreateUserPayload = {
       username: username.trim(),
       email: email.trim().toLowerCase(),
@@ -148,26 +102,27 @@ export const CreateUserPage: React.FC = () => {
       first_name: firstName.trim(),
       last_name: lastName.trim(),
       designation: designation.trim(),
-      department: resolvedDept,
+      department: department.trim(),
       status,
       role: selectedRole ? selectedRole.code : "VIEWER",
       role_id: Number(roleId),
-      circle_id: resolvedCircleId,
-      sub_department_id: resolvedTeamId,
-      team_id: resolvedTeamId,
-      scopes,
+      circle_id: null,
+      sub_department_id: null,
+      team_id: null,
+      scopes: [],
     };
 
     createUserMutation.mutate(payload, {
-      onSuccess: (data) => {
+      onSuccess: (createdUser) => {
         navigate("/users", {
           state: {
-            toastMessage: `User '${data?.username || username}' created successfully with ${scopes.length} access scope(s).`,
+            toastMessage: `User account '${username}' created successfully with role '${selectedRole?.name}'. Configure permissions and hierarchy boundaries in the Access Scopes tab.`,
+            createdUserId: createdUser?.id,
           },
         });
       },
       onError: (err: any) => {
-        const errorData = err?.response?.data?.errors || err?.response?.data?.detail || "Failed to create user.";
+        const errorData = err?.response?.data?.errors || err?.response?.data?.detail || "Failed to create user account.";
         if (typeof errorData === "object") {
           const firstErrKey = Object.keys(errorData)[0];
           setServerError(`${firstErrKey}: ${Array.isArray(errorData[firstErrKey]) ? errorData[firstErrKey][0] : errorData[firstErrKey]}`);
@@ -178,11 +133,11 @@ export const CreateUserPage: React.FC = () => {
     });
   };
 
-  const isSaving = createUserMutation.isPending;
+  const isSubmitting = createUserMutation.isPending;
   const selectedRoleObj = rolesData?.find((r) => r.id === roleId);
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3.5 }, maxWidth: 1100, mx: "auto" }}>
+    <Box sx={{ p: { xs: 2, md: 3.5 }, maxWidth: 960, mx: "auto" }}>
       {/* 1. Dynamic Breadcrumbs */}
       <Breadcrumbs
         separator={<NavigateNextIcon fontSize="small" sx={{ color: colorTokens.text.muted }} />}
@@ -199,7 +154,7 @@ export const CreateUserPage: React.FC = () => {
           User Accounts
         </Link>
         <Typography color="text.primary" sx={{ fontSize: "0.85rem", fontWeight: 700 }}>
-          Create User
+          Create User Account
         </Typography>
       </Breadcrumbs>
 
@@ -219,10 +174,10 @@ export const CreateUserPage: React.FC = () => {
           </IconButton>
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 800, color: colorTokens.text.primary, letterSpacing: "-0.02em" }}>
-              Create User
+              Create User Account
             </Typography>
             <Typography variant="body2" sx={{ color: colorTokens.text.secondary }}>
-              Provision a new user account with enterprise role and dynamic organization access scopes.
+              Provision enterprise identity profile and assign an existing Enterprise Role.
             </Typography>
           </Box>
         </Box>
@@ -231,7 +186,7 @@ export const CreateUserPage: React.FC = () => {
           <Button
             variant="outlined"
             onClick={() => navigate("/users")}
-            disabled={isSaving}
+            disabled={isSubmitting}
             sx={{ borderRadius: radiusTokens.sm, px: 2.5 }}
           >
             Cancel
@@ -239,8 +194,8 @@ export const CreateUserPage: React.FC = () => {
           <Button
             variant="contained"
             onClick={handleSubmit}
-            disabled={isSaving}
-            startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : <PersonAddOutlinedIcon />}
+            disabled={isSubmitting}
+            startIcon={isSubmitting ? <CircularProgress size={16} color="inherit" /> : <PersonAddOutlinedIcon />}
             sx={{
               borderRadius: radiusTokens.sm,
               px: 3,
@@ -249,7 +204,7 @@ export const CreateUserPage: React.FC = () => {
               "&:hover": { bgcolor: colorTokens.primary.dark },
             }}
           >
-            {isSaving ? "Creating Account..." : "Create User"}
+            {isSubmitting ? "Creating..." : "Create Account"}
           </Button>
         </Stack>
       </Box>
@@ -306,7 +261,7 @@ export const CreateUserPage: React.FC = () => {
               onChange={(e) => setFirstName(e.target.value)}
               fullWidth
               size="small"
-              placeholder="e.g. Rahul"
+              placeholder="e.g. Ramesh"
             />
             <TextField
               label="Last Name"
@@ -326,9 +281,9 @@ export const CreateUserPage: React.FC = () => {
               onChange={(e) => setUsername(e.target.value)}
               fullWidth
               size="small"
+              placeholder="e.g. rsharma"
               error={Boolean(formErrors.username)}
-              helperText={formErrors.username || "Used for system authentication"}
-              placeholder="e.g. rahul_sharma"
+              helperText={formErrors.username || "Used for system login"}
             />
             <TextField
               label="Email Address"
@@ -338,9 +293,9 @@ export const CreateUserPage: React.FC = () => {
               onChange={(e) => setEmail(e.target.value)}
               fullWidth
               size="small"
+              placeholder="e.g. ramesh.sharma@mapar.com"
               error={Boolean(formErrors.email)}
-              helperText={formErrors.email || "Official corporate email address"}
-              placeholder="e.g. rahul.sharma@telecrats.com"
+              helperText={formErrors.email || "Official communication email"}
             />
           </Box>
 
@@ -354,7 +309,7 @@ export const CreateUserPage: React.FC = () => {
               fullWidth
               size="small"
               error={Boolean(formErrors.password)}
-              helperText={formErrors.password || "Must be at least 8 characters"}
+              helperText={formErrors.password || "Minimum 8 characters"}
             />
             <TextField
               label="Confirm Password"
@@ -365,18 +320,26 @@ export const CreateUserPage: React.FC = () => {
               fullWidth
               size="small"
               error={Boolean(formErrors.confirmPassword)}
-              helperText={formErrors.confirmPassword || "Re-enter the password to verify"}
+              helperText={formErrors.confirmPassword}
             />
           </Box>
 
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2.5 }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr" }, gap: 2.5 }}>
             <TextField
               label="Designation / Title"
               value={designation}
               onChange={(e) => setDesignation(e.target.value)}
               fullWidth
               size="small"
-              placeholder="e.g. Circle Operations Head"
+              placeholder="e.g. Circle Business Head"
+            />
+            <TextField
+              label="Department"
+              value={department}
+              onChange={(e) => setDepartment(e.target.value)}
+              fullWidth
+              size="small"
+              placeholder="e.g. Operations"
             />
             <TextField
               select
@@ -386,14 +349,14 @@ export const CreateUserPage: React.FC = () => {
               fullWidth
               size="small"
             >
-              <MenuItem value="ACTIVE">ACTIVE (Authorized to authenticate)</MenuItem>
-              <MenuItem value="INACTIVE">INACTIVE (Access blocked)</MenuItem>
-              <MenuItem value="INVITED">INVITED (Pending onboarding)</MenuItem>
+              <MenuItem value="ACTIVE">ACTIVE (Authorized)</MenuItem>
+              <MenuItem value="INACTIVE">INACTIVE (Blocked)</MenuItem>
+              <MenuItem value="INVITED">INVITED (Pending)</MenuItem>
             </TextField>
           </Box>
         </Card>
 
-        {/* SECTION 2: Enterprise Role */}
+        {/* SECTION 2: Enterprise Role Assignment */}
         <Card
           elevation={0}
           sx={{
@@ -420,10 +383,10 @@ export const CreateUserPage: React.FC = () => {
             </Box>
             <Box>
               <Typography variant="subtitle1" sx={{ fontWeight: 800, color: colorTokens.text.primary }}>
-                2. Enterprise Role Assignment (WHAT)
+                2. Enterprise Role Assignment
               </Typography>
               <Typography variant="caption" sx={{ color: colorTokens.text.muted }}>
-                Defines what functional capabilities and modules the user is allowed to perform
+                Select from existing database-backed enterprise roles. Role definitions are managed in the Enterprise Roles tab.
               </Typography>
             </Box>
           </Box>
@@ -443,8 +406,8 @@ export const CreateUserPage: React.FC = () => {
             helperText={
               formErrors.roleId ||
               (selectedRoleObj?.description
-                ? `Capabilities: ${selectedRoleObj.description}`
-                : "Select a database-backed enterprise role")
+                ? `Role Capabilities: ${selectedRoleObj.description}`
+                : "Select an existing enterprise role definition")
             }
           >
             {(rolesData || []).map((r) => (
@@ -473,123 +436,68 @@ export const CreateUserPage: React.FC = () => {
           </TextField>
         </Card>
 
-        {/* SECTION 3: Organization Access & Scope (Multi-Scope Cards) */}
+        {/* SECTION 3: Access Scopes Link Callout */}
         <Card
           elevation={0}
           sx={{
-            p: 3.5,
+            p: 3,
             borderRadius: radiusTokens.md,
-            border: `1px solid ${formErrors.scopes ? colorTokens.status.error.main : colorTokens.workspace.border}`,
-            boxShadow: shadowTokens.card,
+            border: `1.5px dashed ${colorTokens.primary.main}`,
+            bgcolor: "rgba(21, 101, 192, 0.03)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 2,
           }}
         >
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2.5 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-              <Box
-                sx={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: radiusTokens.sm,
-                  bgcolor: "rgba(14, 116, 144, 0.1)",
-                  color: "#0e7490",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <AccountTreeOutlinedIcon fontSize="small" />
-              </Box>
-              <Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: colorTokens.text.primary }}>
-                  3. Organization Access & Scope (WHERE)
-                </Typography>
-                <Typography variant="caption" sx={{ color: colorTokens.text.muted }}>
-                  Assign one or multiple organizational boundaries. Hierarchy inheritance cascades downward strictly.
-                </Typography>
-              </Box>
-            </Box>
-
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<AddCircleOutlineIcon />}
-              onClick={handleOpenAddScope}
-              sx={{
-                borderRadius: radiusTokens.sm,
-                bgcolor: colorTokens.primary.main,
-                fontWeight: 700,
-                textTransform: "none",
-                "&:hover": { bgcolor: colorTokens.primary.dark },
-              }}
-            >
-              + Add Access Scope
-            </Button>
-          </Box>
-
-          <Divider sx={{ mb: 2.5 }} />
-
-          {formErrors.scopes && (
-            <Alert severity="error" sx={{ mb: 2.5, borderRadius: radiusTokens.sm }}>
-              {formErrors.scopes}
-            </Alert>
-          )}
-
-          {scopes.length === 0 ? (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
             <Box
               sx={{
-                p: 4,
-                textAlign: "center",
-                bgcolor: "#F8FAFC",
+                width: 44,
+                height: 44,
                 borderRadius: radiusTokens.sm,
-                border: `1.5px dashed ${colorTokens.workspace.border}`,
+                bgcolor: colorTokens.primary.lighter,
+                color: colorTokens.primary.main,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
               }}
             >
-              <AccountTreeOutlinedIcon sx={{ fontSize: 36, color: colorTokens.text.muted, mb: 1 }} />
-              <Typography variant="body2" sx={{ fontWeight: 700, color: colorTokens.text.primary, mb: 0.5 }}>
-                No Organization Access Scopes Assigned
-              </Typography>
-              <Typography variant="caption" sx={{ color: colorTokens.text.secondary, display: "block", mb: 2 }}>
-                Click "+ Add Access Scope" to assign the user to one or more organizational branches.
-              </Typography>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<AddCircleOutlineIcon />}
-                onClick={handleOpenAddScope}
-                sx={{ borderRadius: radiusTokens.sm, fontWeight: 600 }}
-              >
-                + Add Access Scope
-              </Button>
+              <VpnKeyOutlinedIcon />
             </Box>
-          ) : (
-            <Stack spacing={2}>
-              {scopes.map((scope, idx) => (
-                <OrganizationScopeCard
-                  key={idx}
-                  scope={scope}
-                  index={idx}
-                  onEdit={handleOpenEditScope}
-                  onRemove={handleRemoveScope}
-                />
-              ))}
-            </Stack>
-          )}
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: colorTokens.text.primary }}>
+                Looking to configure Module Permissions & Organization Scope?
+              </Typography>
+              <Typography variant="caption" sx={{ color: colorTokens.text.secondary, display: "block" }}>
+                Specific module Read/Write access and geographic circle boundaries are configured in the dedicated <strong>Access Scopes</strong> tab. You will be able to assign scopes immediately after creating this account.
+              </Typography>
+            </Box>
+          </Box>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={() => navigate("/permissions")}
+            sx={{
+              borderRadius: radiusTokens.sm,
+              fontWeight: 700,
+              textTransform: "none",
+              borderColor: colorTokens.primary.main,
+              color: colorTokens.primary.main,
+            }}
+          >
+            Go to Access Scopes →
+          </Button>
         </Card>
 
-        {/* SECTION 4: Effective Access Summary */}
-        <EffectiveAccessSummaryCard
-          roleName={selectedRoleObj?.name}
-          roleCode={selectedRoleObj?.code}
-          rolePermissions={[]}
-          scopes={scopes}
-        />
-
-        {/* SECTION 5: Bottom Action Bar */}
+        {/* Bottom Action Bar */}
         <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 2, pt: 1, pb: 4 }}>
           <Button
             variant="outlined"
             onClick={() => navigate("/users")}
-            disabled={isSaving}
+            disabled={isSubmitting}
             sx={{ borderRadius: radiusTokens.sm, px: 3, py: 1 }}
           >
             Cancel
@@ -597,8 +505,8 @@ export const CreateUserPage: React.FC = () => {
           <Button
             type="submit"
             variant="contained"
-            disabled={isSaving}
-            startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : <CheckCircleOutlineIcon />}
+            disabled={isSubmitting}
+            startIcon={isSubmitting ? <CircularProgress size={16} color="inherit" /> : <PersonAddOutlinedIcon />}
             sx={{
               borderRadius: radiusTokens.sm,
               px: 4,
@@ -608,20 +516,10 @@ export const CreateUserPage: React.FC = () => {
               "&:hover": { bgcolor: colorTokens.primary.dark },
             }}
           >
-            {isSaving ? "Creating User..." : "Create User"}
+            {isSubmitting ? "Creating User..." : "Create User Account"}
           </Button>
         </Box>
       </Box>
-
-      {/* Cascading Scope Dialog */}
-      <OrganizationScopeDialog
-        open={scopeDialogOpen}
-        onClose={() => setScopeDialogOpen(false)}
-        onSave={handleSaveScope}
-        initialScope={editingScope}
-        editIndex={editingScopeIndex}
-        existingScopes={scopes}
-      />
     </Box>
   );
 };

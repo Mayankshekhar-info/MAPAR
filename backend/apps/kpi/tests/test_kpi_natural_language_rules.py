@@ -1,4 +1,5 @@
 import pytest
+from typing import Any
 from decimal import Decimal
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
@@ -21,8 +22,9 @@ User = get_user_model()
 
 @pytest.fixture
 def nl_kpi_data(db):
-    user = User.objects.create_user(username="nl_user", password="password123", email="nl@example.com")
-    admin = User.objects.create_superuser(username="nl_admin", password="password123", email="nladmin@example.com")
+    user_mgr: Any = User.objects
+    user = user_mgr.create_user(username="nl_user", password="password123", email="nl@example.com")
+    admin = user_mgr.create_superuser(username="nl_admin", password="password123", email="nladmin@example.com")
 
     company, _ = MainCompany.objects.get_or_create(code="CORP", defaults={"name": "Headquarters Corp"})
     circle_dl, _ = Circle.objects.get_or_create(code="DL", defaults={"name": "Delhi Circle"})

@@ -122,7 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   WebkitTextFillColor: "transparent",
                 }}
               >
-                MAPAR
+                PAGMS
               </Typography>
               <Typography
                 variant="caption"

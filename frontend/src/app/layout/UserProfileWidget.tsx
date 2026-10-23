@@ -111,7 +111,7 @@ export const UserProfileWidget: React.FC<UserProfileWidgetProps> = ({ collapsed 
         </Box>
       </Box>
 
-      <Tooltip title="Sign Out of MAPAR">
+      <Tooltip title="Sign Out of PAGMS">
         <IconButton
           onClick={logout}
           size="small"

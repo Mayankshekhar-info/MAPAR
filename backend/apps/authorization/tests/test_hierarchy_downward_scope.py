@@ -39,8 +39,7 @@ from apps.organization.selectors.organization_selectors import (
 from apps.users.selectors.user_selectors import get_users_list, get_user_detail
 from apps.users.services.user_service import UserService
 from apps.dashboard.selectors.cockpit_selectors import get_filter_options
-
-User = get_user_model()
+from apps.identity.models import User
 
 
 class HierarchyDownwardScopeTestCase(TestCase):

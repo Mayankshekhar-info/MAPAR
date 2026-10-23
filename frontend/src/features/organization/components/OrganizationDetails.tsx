@@ -22,7 +22,7 @@ interface OrganizationDetailsProps {
   nodeDetail?: NodeDetail | null;
   isLoading: boolean;
   onEdit: () => void;
-  onAddChild: () => void;
+  onAddChild: (childLevel?: HierarchyLevel) => void;
   onDelete: () => void;
 }
 
@@ -210,6 +210,68 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
           )}
         </Box>
 
+        {/* Hierarchy Overview Summary */}
+        {nodeDetail.hierarchy_summary && (
+          <Box sx={{ mb: 2.5 }}>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: colorTokens.text.secondary, textTransform: "uppercase", display: "block", mb: 1 }}>
+              Organization Hierarchy Metrics
+            </Typography>
+            <Paper
+              elevation={0}
+              sx={{
+                p: 1.5,
+                bgcolor: "rgba(0,0,0,0.02)",
+                border: `1px solid ${colorTokens.workspace.divider}`,
+                borderRadius: "10px",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 1,
+              }}
+            >
+              {nodeDetail.hierarchy_summary.sub_companies_count !== undefined && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={`${nodeDetail.hierarchy_summary.sub_companies_count} Sub Companies`}
+                  sx={{ fontWeight: 600, fontSize: "0.72rem" }}
+                />
+              )}
+              {nodeDetail.hierarchy_summary.projects_count !== undefined && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={`${nodeDetail.hierarchy_summary.projects_count} Projects`}
+                  sx={{ fontWeight: 600, fontSize: "0.72rem" }}
+                />
+              )}
+              {nodeDetail.hierarchy_summary.direct_circles_count !== undefined && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={`${nodeDetail.hierarchy_summary.direct_circles_count} Direct Circles`}
+                  sx={{ fontWeight: 700, fontSize: "0.72rem", color: "#059669", borderColor: "#A7F3D0" }}
+                />
+              )}
+              {Boolean(nodeDetail.hierarchy_summary.sub_company_circles_count) && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={`${nodeDetail.hierarchy_summary.sub_company_circles_count} Sub Company Circles`}
+                  sx={{ fontWeight: 700, fontSize: "0.72rem", color: "#6366F1", borderColor: "#C7D2FE" }}
+                />
+              )}
+              {nodeDetail.hierarchy_summary.project_circles_count !== undefined && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  label={`${nodeDetail.hierarchy_summary.project_circles_count} Project Circles`}
+                  sx={{ fontWeight: 700, fontSize: "0.72rem", color: "#2563EB", borderColor: "#BFDBFE" }}
+                />
+              )}
+            </Paper>
+          </Box>
+        )}
+
         <Divider sx={{ my: 2 }} />
 
         {/* Children Elements */}
@@ -219,14 +281,27 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
               Direct Children ({nodeDetail.children_count})
             </Typography>
             {canAddChild && (
-              <Button
-                size="small"
-                startIcon={<AddIcon fontSize="small" />}
-                onClick={onAddChild}
-                sx={{ fontSize: "0.72rem", fontWeight: 700, p: 0.5 }}
-              >
-                {addChildLabel}
-              </Button>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  size="small"
+                  startIcon={<AddIcon fontSize="small" />}
+                  onClick={() => onAddChild()}
+                  sx={{ fontSize: "0.72rem", fontWeight: 700, p: 0.5 }}
+                >
+                  {addChildLabel}
+                </Button>
+                {nodeDetail.level === "MAIN_COMPANY" && (
+                  <Button
+                    id="btn-detail-add-circle-top"
+                    size="small"
+                    startIcon={<AddIcon fontSize="small" />}
+                    onClick={() => onAddChild("CIRCLE")}
+                    sx={{ fontSize: "0.72rem", fontWeight: 700, p: 0.5 }}
+                  >
+                    + Add Circle
+                  </Button>
+                )}
+              </Stack>
             )}
           </Stack>
 
@@ -248,9 +323,24 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
                   }}
                 >
                   <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600, color: colorTokens.text.primary }}>
-                      {child.name}
-                    </Typography>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: colorTokens.text.primary }}>
+                        {child.name}
+                      </Typography>
+                      {child.level && (nodeDetail.level === "MAIN_COMPANY" || nodeDetail.level === "SUB_COMPANY") && (
+                        <Chip
+                          size="small"
+                          label={child.level === "SUB_COMPANY" ? "Sub Company" : child.level === "PROJECT" ? "Project" : "Direct Circle"}
+                          sx={{
+                            height: 18,
+                            fontSize: "0.62rem",
+                            fontWeight: 700,
+                            bgcolor: child.level === "SUB_COMPANY" ? "#EEF2FF" : child.level === "PROJECT" ? "#EFF6FF" : "#ECFDF5",
+                            color: child.level === "SUB_COMPANY" ? "#4F46E5" : child.level === "PROJECT" ? "#2563EB" : "#059669",
+                          }}
+                        />
+                      )}
+                    </Box>
                     <Typography variant="caption" sx={{ fontFamily: "monospace", color: colorTokens.text.secondary }}>
                       {child.level === "USER" ? `@${child.code}` : child.code}
                     </Typography>
@@ -308,17 +398,32 @@ export const OrganizationDetails: React.FC<OrganizationDetailsProps> = ({
       >
         <Stack direction="row" spacing={1.5}>
           {canAddChild && (
-            <Button
-              id="btn-detail-add-child"
-              fullWidth
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={onAddChild}
-              sx={{ fontWeight: 600, borderRadius: "10px", py: 1 }}
-            >
-              {addChildLabel}
-            </Button>
+            <>
+              <Button
+                id="btn-detail-add-child"
+                fullWidth
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={() => onAddChild()}
+                sx={{ fontWeight: 600, borderRadius: "10px", py: 1 }}
+              >
+                {addChildLabel}
+              </Button>
+              {nodeDetail.level === "MAIN_COMPANY" && (
+                <Button
+                  id="btn-detail-add-circle"
+                  fullWidth
+                  variant="outlined"
+                  color="primary"
+                  startIcon={<AddIcon />}
+                  onClick={() => onAddChild("CIRCLE")}
+                  sx={{ fontWeight: 600, borderRadius: "10px", py: 1 }}
+                >
+                  + Add Circle
+                </Button>
+              )}
+            </>
           )}
           <Button
             id="btn-detail-edit"

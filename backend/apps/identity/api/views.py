@@ -57,11 +57,26 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        if not user.is_active:
+        # Account status & activation verification
+        status_val = getattr(user, "status", None)
+        if not user.is_active or status_val != getattr(user.Status, "ACTIVE", "ACTIVE"):
+            if status_val == getattr(user.Status, "INVITED", "INVITED"):
+                detail = "Your account is pending activation. Please contact your system administrator."
+            elif status_val == getattr(user.Status, "LOCKED", "LOCKED"):
+                detail = "Your account has been locked. Please contact your system administrator."
+            elif status_val == getattr(user.Status, "SUSPENDED", "SUSPENDED"):
+                detail = "Your account has been suspended. Please contact your system administrator."
+            else:
+                detail = "User account is inactive. Please contact your system administrator."
             return Response(
-                {"detail": "User account is inactive. Please contact your system administrator."},
+                {"detail": detail},
                 status=status.HTTP_403_FORBIDDEN,
             )
+
+        # Reset failed login attempts on successful authentication
+        if hasattr(user, "failed_login_attempts") and user.failed_login_attempts > 0:
+            user.failed_login_attempts = 0
+            user.save(update_fields=["failed_login_attempts"])
 
         login(request, user)
 

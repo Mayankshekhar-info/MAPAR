@@ -19,26 +19,31 @@ export function isItemAuthorized(
   if (!user) return false;
   if (user.is_superuser || user.role === "SUPER_ADMIN") return true;
 
-  // 1. Dynamic permission check
+  // 1. Strict Module Code Check: If user has accessible_modules defined and item specifies a moduleCode
+  if (moduleCode && user.accessible_modules) {
+    if (!user.accessible_modules.includes(moduleCode)) {
+      return false;
+    }
+  }
+
+  // 2. Dynamic permission check
   if (requiredPermission && user.permissions && user.permissions.length > 0) {
     if (user.permissions.includes(requiredPermission) || user.permissions.includes("*.*")) {
       return true;
     }
   }
 
-  // 2. Dynamic module code check
-  if (moduleCode && user.accessible_modules && user.accessible_modules.length > 0) {
-    if (user.accessible_modules.includes(moduleCode)) {
-      return true;
-    }
+  // 3. If module was granted in accessible_modules and no requiredPermission was specified, grant
+  if (moduleCode && user.accessible_modules && user.accessible_modules.includes(moduleCode) && !requiredPermission) {
+    return true;
   }
 
-  // 3. If user permissions are loaded and this item requires a permission/module that is NOT granted, deny
-  if (user.permissions && user.permissions.length > 0 && (requiredPermission || moduleCode)) {
+  // 4. If user permissions are loaded and this item requires a permission that is NOT granted, deny
+  if (user.permissions && user.permissions.length > 0 && requiredPermission) {
     return false;
   }
 
-  // 4. Fallback to allowedRoles if permissions not loaded
+  // 5. Fallback to allowedRoles if permissions not loaded
   if (!allowedRoles || allowedRoles.length === 0) return true;
   return allowedRoles.includes(user.role as UserRole);
 }
@@ -145,3 +150,78 @@ export function resolveBreadcrumbs(
 
   return breadcrumbs;
 }
+
+/**
+ * Resolves a safe, authorized destination route for a user.
+ * If the intended target route requires a module the user is not permitted to access,
+ * this function adapts or redirects to the user's primary allowed workspace.
+ */
+export function resolveSafeLandingRoute(targetPath: string, user: AuthUser | null): string {
+  if (!user) return "/login";
+  if (user.is_superuser || user.role === "SUPER_ADMIN") return targetPath || "/";
+  if (!user.accessible_modules || user.accessible_modules.length === 0) return targetPath || "/";
+
+  // Task detail route rewrite across governance / audit / documents modules
+  if (targetPath.startsWith("/governance/tasks/")) {
+    const taskId = targetPath.split("/")[3];
+    if (user.accessible_modules.includes("governance")) {
+      return targetPath;
+    }
+    if (user.accessible_modules.includes("audit")) {
+      return `/audit/tasks/${taskId}`;
+    }
+    if (user.accessible_modules.includes("documents")) {
+      return `/documents/tasks/${taskId}`;
+    }
+  }
+
+  if (targetPath.startsWith("/audit/tasks/")) {
+    const taskId = targetPath.split("/")[3];
+    if (user.accessible_modules.includes("audit")) {
+      return targetPath;
+    }
+    if (user.accessible_modules.includes("documents")) {
+      return `/documents/tasks/${taskId}`;
+    }
+    if (user.accessible_modules.includes("governance")) {
+      return `/governance/tasks/${taskId}`;
+    }
+  }
+
+  if (targetPath.startsWith("/documents/tasks/")) {
+    const taskId = targetPath.split("/")[3];
+    if (user.accessible_modules.includes("documents")) {
+      return targetPath;
+    }
+    if (user.accessible_modules.includes("audit")) {
+      return `/audit/tasks/${taskId}`;
+    }
+    if (user.accessible_modules.includes("governance")) {
+      return `/governance/tasks/${taskId}`;
+    }
+  }
+
+  // Find user's first allowed primary navigation item
+  const firstAllowedItem = MAPAR_NAVIGATION_CONFIG
+    .flatMap((g) => g.items)
+    .find((item) => item.moduleCode && user.accessible_modules?.includes(item.moduleCode));
+
+  const fallbackPath = firstAllowedItem ? firstAllowedItem.path : "/";
+
+  // If hitting root "/" cockpit but user lacks management module
+  if (targetPath === "/" || !targetPath) {
+    if (user.accessible_modules.includes("management")) {
+      return "/";
+    }
+    return fallbackPath;
+  }
+
+  // Check required module for targetPath
+  const matchedItem = findNavigationItem(targetPath, MAPAR_NAVIGATION_CONFIG);
+  if (matchedItem?.moduleCode && !user.accessible_modules.includes(matchedItem.moduleCode)) {
+    return fallbackPath;
+  }
+
+  return targetPath;
+}
+

@@ -282,13 +282,13 @@ export const LoginVisualPreview: React.FC = () => {
                     alignItems: "center",
                   }}
                 >
-                  <Typography variant="caption" sx={{ color: "#F1F5F9", fontWeight: 500, fontSize: "0.75rem" }}>
+                  <Typography variant="caption" sx={{ color: "#f1f9f5ff", fontWeight: 500, fontSize: "0.75rem" }}>
                     {row.domain}
                   </Typography>
-                  <Typography variant="caption" sx={{ color: "#94A3B8", fontSize: "0.725rem" }}>
+                  <Typography variant="caption" sx={{ color: "#3ab68fff", fontSize: "0.725rem" }}>
                     {row.target}
                   </Typography>
-                  <Typography variant="caption" sx={{ color: "#E2E8F0", fontWeight: 600, fontSize: "0.725rem" }}>
+                  <Typography variant="caption" sx={{ color: "#3fcf8eff", fontWeight: 600, fontSize: "0.725rem" }}>
                     {row.val}
                   </Typography>
                   <Box>

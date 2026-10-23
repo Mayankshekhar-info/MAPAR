@@ -11,6 +11,7 @@ import { colorTokens } from "../../../app/theme/tokens";
 interface OrganizationHeaderProps {
   onAddCompany: () => void;
   onAddChild?: () => void;
+  onAddCircle?: () => void;
   selectedNodeLabel?: string | null;
   addChildLabel?: string | null;
 }
@@ -18,6 +19,7 @@ interface OrganizationHeaderProps {
 export const OrganizationHeader: React.FC<OrganizationHeaderProps> = ({
   onAddCompany,
   onAddChild,
+  onAddCircle,
   addChildLabel,
 }) => {
   return (
@@ -61,7 +63,7 @@ export const OrganizationHeader: React.FC<OrganizationHeaderProps> = ({
               Organization Hierarchy &amp; Tree Explorer
             </Typography>
             <Typography variant="body2" sx={{ color: colorTokens.text.secondary, mt: 0.25 }}>
-              Enterprise Structure: Main Company &rarr; Sub Company &rarr; Project &rarr; Circle &rarr; Domain &rarr; Department &rarr; Sub-Department
+              Enterprise Structure: Main Company &rarr; Sub Company / Circle &rarr; Project &rarr; Circle &rarr; Domain &rarr; Department &rarr; Sub-Department
             </Typography>
           </Box>
         </Stack>
@@ -100,6 +102,24 @@ export const OrganizationHeader: React.FC<OrganizationHeaderProps> = ({
             }}
           >
             {addChildLabel}
+          </Button>
+        )}
+
+        {onAddCircle && (
+          <Button
+            id="btn-header-add-circle"
+            variant="outlined"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={onAddCircle}
+            sx={{
+              fontWeight: 600,
+              borderRadius: "10px",
+              px: 2,
+              py: 1,
+            }}
+          >
+            + Add Circle
           </Button>
         )}
       </Stack>

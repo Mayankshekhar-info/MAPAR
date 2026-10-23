@@ -29,6 +29,7 @@ interface LoginFormProps {
   isSubmitting: boolean;
   errorMessage: string | null;
   onClearError: () => void;
+  dark?: boolean;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({
@@ -36,6 +37,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   isSubmitting,
   errorMessage,
   onClearError,
+  dark = false,
 }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
@@ -88,7 +90,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             display: "block",
             fontSize: "0.85rem",
             fontWeight: 600,
-            color: "#334155",
+            color: dark ? "#CBD5E1" : "#334155",
             mb: 0.75,
           }}
         >
@@ -112,14 +114,22 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                 input: {
                   startAdornment: (
                     <InputAdornment position="start">
-                      <PersonOutline sx={{ color: "#94A3B8", fontSize: 20 }} />
+                      <PersonOutline sx={{ color: dark ? "#64748B" : "#94A3B8", fontSize: 20 }} />
                     </InputAdornment>
                   ),
                   sx: {
                     borderRadius: 1.5,
-                    bgcolor: "#F8FAFC",
-                    "&:hover": { bgcolor: "#F1F5F9" },
-                    "&.Mui-focused": { bgcolor: "#FFFFFF" },
+                    bgcolor: dark ? "rgba(19, 28, 40, 0.85)" : "#F8FAFC",
+                    color: dark ? "#F8FAFC" : "#0F172A",
+                    border: dark ? "1px solid rgba(0, 210, 255, 0.22)" : "1px solid #E2E8F0",
+                    "&:hover": {
+                      bgcolor: dark ? "rgba(25, 38, 54, 0.95)" : "#FFFFFF",
+                      borderColor: dark ? "rgba(0, 210, 255, 0.45)" : "#CBD5E1",
+                    },
+                    "&.Mui-focused": {
+                      bgcolor: dark ? "#162334" : "#FFFFFF",
+                      borderColor: dark ? "#00D2FF" : "#059669",
+                    },
                   },
                 },
               }}
@@ -137,7 +147,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             sx={{
               fontSize: "0.85rem",
               fontWeight: 600,
-              color: "#334155",
+              color: dark ? "#CBD5E1" : "#334155",
             }}
           >
             Password
@@ -150,7 +160,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             sx={{
               fontSize: "0.825rem",
               fontWeight: 600,
-              color: "#1565C0",
+              color: dark ? "#38BDF8" : "#059669",
               textDecoration: "none",
               "&:hover": { textDecoration: "underline" },
             }}
@@ -176,7 +186,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                 input: {
                   startAdornment: (
                     <InputAdornment position="start">
-                      <LockOutlined sx={{ color: "#94A3B8", fontSize: 20 }} />
+                      <LockOutlined sx={{ color: dark ? "#64748B" : "#94A3B8", fontSize: 20 }} />
                     </InputAdornment>
                   ),
                   endAdornment: (
@@ -186,7 +196,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                         onClick={() => setShowPassword(!showPassword)}
                         edge="end"
                         size="small"
-                        sx={{ color: "#94A3B8" }}
+                        sx={{ color: dark ? "#94A3B8" : "#94A3B8" }}
                       >
                         {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
                       </IconButton>
@@ -194,9 +204,17 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                   ),
                   sx: {
                     borderRadius: 1.5,
-                    bgcolor: "#F8FAFC",
-                    "&:hover": { bgcolor: "#F1F5F9" },
-                    "&.Mui-focused": { bgcolor: "#FFFFFF" },
+                    bgcolor: dark ? "rgba(19, 28, 40, 0.85)" : "#F8FAFC",
+                    color: dark ? "#F8FAFC" : "#0F172A",
+                    border: dark ? "1px solid rgba(0, 210, 255, 0.22)" : "1px solid #E2E8F0",
+                    "&:hover": {
+                      bgcolor: dark ? "rgba(25, 38, 54, 0.95)" : "#FFFFFF",
+                      borderColor: dark ? "rgba(0, 210, 255, 0.45)" : "#CBD5E1",
+                    },
+                    "&.Mui-focused": {
+                      bgcolor: dark ? "#162334" : "#FFFFFF",
+                      borderColor: dark ? "#00D2FF" : "#059669",
+                    },
                   },
                 },
               }}
@@ -219,13 +237,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({
                   size="small"
                   disabled={isSubmitting}
                   sx={{
-                    color: "#94A3B8",
-                    "&.Mui-checked": { color: "#1565C0" },
+                    color: dark ? "#64748B" : "#94A3B8",
+                    "&.Mui-checked": { color: dark ? "#38BDF8" : "#059669" },
                   }}
                 />
               }
               label={
-                <Typography variant="body2" sx={{ color: "#475569", fontSize: "0.85rem", userSelect: "none" }}>
+                <Typography variant="body2" sx={{ color: dark ? "#94A3B8" : "#475569", fontSize: "0.85rem", userSelect: "none" }}>
                   Remember me on this workstation
                 </Typography>
               }
@@ -247,11 +265,22 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           fontWeight: 700,
           fontSize: "0.95rem",
           textTransform: "none",
-          bgcolor: "#1565C0",
-          boxShadow: "0 4px 14px rgba(21, 101, 192, 0.35)",
+          background: dark
+            ? "linear-gradient(135deg, #00D2FF 0%, #00E676 100%)"
+            : "linear-gradient(135deg, #059669 0%, #0D9488 100%)",
+          color: dark ? "#031124" : "#FFFFFF",
+          boxShadow: dark
+            ? "0 4px 18px rgba(0, 210, 255, 0.4)"
+            : "0 3px 12px rgba(5, 150, 105, 0.25)",
+          transition: "all 0.25s ease",
           "&:hover": {
-            bgcolor: "#0D47A1",
-            boxShadow: "0 6px 18px rgba(13, 71, 161, 0.4)",
+            background: dark
+              ? "linear-gradient(135deg, #00E676 0%, #00D2FF 100%)"
+              : "linear-gradient(135deg, #047857 0%, #0F766E 100%)",
+            boxShadow: dark
+              ? "0 6px 24px rgba(0, 230, 118, 0.55)"
+              : "0 6px 18px rgba(5, 150, 105, 0.35)",
+            transform: "translateY(-1px)",
           },
         }}
       >

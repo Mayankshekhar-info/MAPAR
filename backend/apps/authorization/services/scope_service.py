@@ -33,11 +33,20 @@ class ScopeService:
         if admin_scope.is_unrestricted:
             return
 
+        mc_id = scope_data.get("main_company_id")
+        sc_id = scope_data.get("sub_company_id")
+        prj_id = scope_data.get("project_id")
         circle_id = scope_data.get("circle_id")
         domain_id = scope_data.get("domain_id")
         dept_id = scope_data.get("department_id")
         team_id = scope_data.get("sub_department_id") or scope_data.get("team_id")
 
+        if mc_id and not admin_scope.is_main_company_allowed(mc_id):
+            raise ValidationError({"main_company_id": "Selected Main Company is outside your authorized organizational scope."})
+        if sc_id and not admin_scope.is_sub_company_allowed(sc_id):
+            raise ValidationError({"sub_company_id": "Selected Sub Company is outside your authorized organizational scope."})
+        if prj_id and not admin_scope.is_project_allowed(prj_id):
+            raise ValidationError({"project_id": "Selected Project is outside your authorized organizational scope."})
         if circle_id and not admin_scope.is_circle_allowed(circle_id):
             raise ValidationError({"circle_id": "Selected Circle is outside your authorized organizational scope."})
         if domain_id and not admin_scope.is_domain_allowed(domain_id):
@@ -334,3 +343,11 @@ class ScopeService:
                     cls.create_user_scope(s_data_copy, admin_user)
             else:
                 cls.create_user_scope(s_data_copy, admin_user)
+
+        # Synchronize user primary circle & team with configured scopes
+        first_circle_id = next((s.get("circle_id") for s in scopes_data if s.get("circle_id")), None)
+        first_team_id = next((s.get("team_id") or s.get("sub_department_id") for s in scopes_data if (s.get("team_id") or s.get("sub_department_id"))), None)
+        user.circle_id = first_circle_id
+        if first_team_id:
+            user.sub_department_id = first_team_id
+        user.save(update_fields=["circle", "sub_department"])

@@ -18,6 +18,7 @@ class CreateUserSerializer(serializers.Serializer):
     employee_id = serializers.CharField(max_length=50, required=False, allow_blank=True, allow_null=True, default=None)
     status = serializers.ChoiceField(choices=["ACTIVE", "INACTIVE", "INVITED"], default="ACTIVE")
     scopes = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+    module_permissions = serializers.ListField(child=serializers.DictField(), required=False, default=list)
 
 
 class UpdateUserSerializer(serializers.Serializer):
@@ -36,4 +37,6 @@ class UpdateUserSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=["ACTIVE", "INACTIVE", "LOCKED", "SUSPENDED"], required=False)
     password = serializers.CharField(max_length=128, required=False, allow_blank=True, write_only=True)
     scopes = serializers.ListField(child=serializers.DictField(), required=False)
+    module_permissions = serializers.ListField(child=serializers.DictField(), required=False)
+
 

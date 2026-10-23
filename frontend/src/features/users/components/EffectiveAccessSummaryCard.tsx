@@ -8,16 +8,16 @@ import Divider from "@mui/material/Divider";
 import VpnKeyOutlinedIcon from "@mui/icons-material/VpnKeyOutlined";
 import SecurityOutlinedIcon from "@mui/icons-material/SecurityOutlined";
 import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
-import PublicIcon from "@mui/icons-material/Public";
+import ViewModuleOutlinedIcon from "@mui/icons-material/ViewModuleOutlined";
 
 import { colorTokens, radiusTokens, shadowTokens } from "../../../app/theme/tokens";
-import { OrganizationScopeItem } from "../types/users.types";
+import { OrganizationScopeItem, UserModulePermissionItem } from "../types/users.types";
 
 interface EffectiveAccessSummaryCardProps {
   roleName?: string;
   roleCode?: string;
   rolePermissions?: string[];
+  modulePermissions?: UserModulePermissionItem[];
   scopes: OrganizationScopeItem[];
 }
 
@@ -25,6 +25,7 @@ export const EffectiveAccessSummaryCard: React.FC<EffectiveAccessSummaryCardProp
   roleName,
   roleCode,
   rolePermissions = [],
+  modulePermissions = [],
   scopes,
 }) => {
   // Aggregate unique actions granted across all scopes
@@ -36,6 +37,10 @@ export const EffectiveAccessSummaryCard: React.FC<EffectiveAccessSummaryCardProp
     if (s.can_update || s.actions?.includes("update")) allActions.add("update");
     if (s.can_delete || s.actions?.includes("delete")) allActions.add("delete");
   });
+
+  const writeModules = modulePermissions.filter((m) => m.access_level === "WRITE");
+  const readModules = modulePermissions.filter((m) => m.access_level === "READ");
+  const deniedModules = modulePermissions.filter((m) => m.access_level === "NO_ACCESS");
 
   return (
     <Card
@@ -65,16 +70,16 @@ export const EffectiveAccessSummaryCard: React.FC<EffectiveAccessSummaryCardProp
         </Box>
         <Box>
           <Typography variant="subtitle1" sx={{ fontWeight: 800, color: colorTokens.text.primary, letterSpacing: "-0.01em" }}>
-            Effective Access Preview
+            Effective Access & Scope Summary
           </Typography>
           <Typography variant="caption" sx={{ color: colorTokens.text.secondary }}>
-            Real-time evaluation of USER + ENTERPRISE ROLE + ORGANIZATION SCOPE(S)
+            Real-time evaluation: USER + ENTERPRISE ROLE + MODULE ACCESS + ORGANIZATION SCOPE(S)
           </Typography>
         </Box>
       </Box>
 
-      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 2.5 }}>
-        {/* WHAT: Role & Module Permissions */}
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr 1fr" }, gap: 2 }}>
+        {/* 1. ENTERPRISE ROLE */}
         <Box
           sx={{
             p: 2,
@@ -84,13 +89,13 @@ export const EffectiveAccessSummaryCard: React.FC<EffectiveAccessSummaryCardProp
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-            <SecurityOutlinedIcon fontSize="small" sx={{ color: colorTokens.primary.main }} />
+            <SecurityOutlinedIcon fontSize="small" sx={{ color: "#4F46E5" }} />
             <Typography variant="body2" sx={{ fontWeight: 800, color: colorTokens.text.primary }}>
-              Role Capabilities (WHAT)
+              Enterprise Role (WHAT)
             </Typography>
           </Box>
           <Typography variant="caption" sx={{ color: colorTokens.text.secondary, display: "block", mb: 1.5 }}>
-            Defined by Enterprise Role assignment
+            Defines role-based authority & capabilities
           </Typography>
 
           <Box sx={{ mb: 1.5 }}>
@@ -113,7 +118,7 @@ export const EffectiveAccessSummaryCard: React.FC<EffectiveAccessSummaryCardProp
               <Typography variant="caption" sx={{ fontWeight: 700, color: colorTokens.text.secondary, display: "block", mb: 0.5 }}>
                 Role Permissions ({rolePermissions.length}):
               </Typography>
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, maxHeight: 120, overflowY: "auto" }}>
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, maxHeight: 100, overflowY: "auto" }}>
                 {rolePermissions.map((perm) => (
                   <Chip
                     key={perm}
@@ -128,7 +133,7 @@ export const EffectiveAccessSummaryCard: React.FC<EffectiveAccessSummaryCardProp
           )}
         </Box>
 
-        {/* WHERE: Organization Boundaries */}
+        {/* 2. MODULE ACCESS DIMENSION */}
         <Box
           sx={{
             p: 2,
@@ -138,13 +143,95 @@ export const EffectiveAccessSummaryCard: React.FC<EffectiveAccessSummaryCardProp
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
-            <AccountTreeOutlinedIcon fontSize="small" sx={{ color: colorTokens.primary.main }} />
+            <ViewModuleOutlinedIcon fontSize="small" sx={{ color: "#0284C7" }} />
             <Typography variant="body2" sx={{ fontWeight: 800, color: colorTokens.text.primary }}>
-              Organization Access (WHERE)
+              Module Access (WHERE TO WORK)
             </Typography>
           </Box>
           <Typography variant="caption" sx={{ color: colorTokens.text.secondary, display: "block", mb: 1.5 }}>
-            Defined by {scopes.length} assigned organizational scope(s)
+            Enforces independent module read/write gates
+          </Typography>
+
+          {modulePermissions.length === 0 ? (
+            <Typography variant="caption" sx={{ color: colorTokens.text.muted }}>
+              All modules configured by role defaults
+            </Typography>
+          ) : (
+            <Stack spacing={1}>
+              {writeModules.length > 0 && (
+                <Box>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#065F46", display: "block", mb: 0.3 }}>
+                    Read & Write ({writeModules.length}):
+                  </Typography>
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                    {writeModules.map((m) => (
+                      <Chip
+                        key={m.module_code}
+                        label={m.module_name || m.module_code}
+                        size="small"
+                        sx={{ fontSize: "0.7rem", fontWeight: 600, bgcolor: "#D1FAE5", color: "#065F46" }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+
+              {readModules.length > 0 && (
+                <Box>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#0369A1", display: "block", mb: 0.3 }}>
+                    Read Only ({readModules.length}):
+                  </Typography>
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                    {readModules.map((m) => (
+                      <Chip
+                        key={m.module_code}
+                        label={m.module_name || m.module_code}
+                        size="small"
+                        sx={{ fontSize: "0.7rem", fontWeight: 600, bgcolor: "#E0F2FE", color: "#0369A1" }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+
+              {deniedModules.length > 0 && (
+                <Box>
+                  <Typography variant="caption" sx={{ fontWeight: 700, color: "#DC2626", display: "block", mb: 0.3 }}>
+                    No Access ({deniedModules.length}):
+                  </Typography>
+                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                    {deniedModules.map((m) => (
+                      <Chip
+                        key={m.module_code}
+                        label={m.module_name || m.module_code}
+                        size="small"
+                        sx={{ fontSize: "0.7rem", fontWeight: 500, bgcolor: "#F1F5F9", color: "#94A3B8" }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+            </Stack>
+          )}
+        </Box>
+
+        {/* 3. ORGANIZATION SCOPE DIMENSION */}
+        <Box
+          sx={{
+            p: 2,
+            borderRadius: radiusTokens.sm,
+            bgcolor: "#F8FAFC",
+            border: `1px solid ${colorTokens.workspace.border}`,
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+            <AccountTreeOutlinedIcon fontSize="small" sx={{ color: "#0e7490" }} />
+            <Typography variant="body2" sx={{ fontWeight: 800, color: colorTokens.text.primary }}>
+              Organization Scope (DATA BOUNDARY)
+            </Typography>
+          </Box>
+          <Typography variant="caption" sx={{ color: colorTokens.text.secondary, display: "block", mb: 1.5 }}>
+            Strict geographic and hierarchy data isolation
           </Typography>
 
           {scopes.length === 0 ? (
@@ -175,9 +262,9 @@ export const EffectiveAccessSummaryCard: React.FC<EffectiveAccessSummaryCardProp
           )}
 
           {allActions.size > 0 && (
-            <Box sx={{ mt: 2 }}>
+            <Box sx={{ mt: 1.5 }}>
               <Typography variant="caption" sx={{ fontWeight: 700, color: colorTokens.text.secondary, display: "block", mb: 0.5 }}>
-                Cumulative Action Rights:
+                Scope Action Rights:
               </Typography>
               <Stack direction="row" spacing={0.5} flexWrap="wrap">
                 {Array.from(allActions).map((act) => (
@@ -202,3 +289,4 @@ export const EffectiveAccessSummaryCard: React.FC<EffectiveAccessSummaryCardProp
     </Card>
   );
 };
+

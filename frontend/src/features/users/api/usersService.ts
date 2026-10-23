@@ -4,6 +4,7 @@ import {
   UserDetail,
   CreateUserPayload,
   UpdateUserPayload,
+  ModuleCatalogItem,
 } from "../types/users.types";
 
 export interface UsersFilterParams {
@@ -16,6 +17,11 @@ export interface UsersFilterParams {
 }
 
 export const usersService = {
+  async getModuleCatalog(): Promise<ModuleCatalogItem[]> {
+    const res = await api.get<{ success: boolean; modules: ModuleCatalogItem[] }>("/authorization/modules/");
+    return res.data.modules;
+  },
+
   async getUsers(params: UsersFilterParams = {}): Promise<UsersListResponse> {
     const q = new URLSearchParams();
     if (params.search) q.set("search", params.search);

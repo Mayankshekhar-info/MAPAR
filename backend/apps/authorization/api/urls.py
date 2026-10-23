@@ -6,9 +6,11 @@ from apps.authorization.api.views import (
     AccessScopeListView,
     AccessScopeDetailView,
     UserEffectiveAccessView,
+    ModuleCatalogView,
 )
 
 urlpatterns = [
+    path("modules/", ModuleCatalogView.as_view(), name="auth-module-catalog"),
     path("roles/", RoleListView.as_view(), name="auth-role-list"),
     path("roles/<int:pk>/", RoleDetailView.as_view(), name="auth-role-detail"),
     path("permissions/matrix/", PermissionMatrixView.as_view(), name="auth-permission-matrix"),

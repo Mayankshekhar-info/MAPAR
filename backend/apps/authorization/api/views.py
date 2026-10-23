@@ -123,7 +123,7 @@ class AccessScopeListView(APIView):
 
         try:
             scope = ScopeService.assign_user_scope(serializer.validated_data, admin_user=request.user)
-            user_scopes = get_user_scopes_list(user_id=scope.user_id)
+            user_scopes = get_user_scopes_list(user_id=scope.user.id)
             matched_scope = next((s for s in user_scopes if s["id"] == scope.id), user_scopes[0] if user_scopes else None)
             return Response({"success": True, "scope": matched_scope}, status=status.HTTP_201_CREATED)
         except ValidationError as e:
@@ -143,7 +143,7 @@ class AccessScopeDetailView(APIView):
         from apps.authorization.models import UserAccessScope
         try:
             scope = UserAccessScope.objects.get(id=pk)
-            scopes = get_user_scopes_list(user_id=scope.user_id)
+            scopes = get_user_scopes_list(user_id=scope.user.id)
             matched = next((s for s in scopes if s["id"] == pk), None)
             if not matched:
                 return Response({"success": False, "detail": "Scope not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -159,7 +159,7 @@ class AccessScopeDetailView(APIView):
 
         try:
             scope = ScopeService.update_user_scope(pk, serializer.validated_data, admin_user=request.user)
-            scopes = get_user_scopes_list(user_id=scope.user_id)
+            scopes = get_user_scopes_list(user_id=scope.user.id)
             matched = next((s for s in scopes if s["id"] == pk), None)
             return Response({"success": True, "scope": matched})
         except ValidationError as e:
@@ -186,3 +186,16 @@ class UserEffectiveAccessView(APIView):
         if not data:
             return Response({"success": False, "detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
         return Response({"success": True, "effective_access": data})
+
+
+class ModuleCatalogView(APIView):
+    """
+    GET /api/v1/authorization/modules/ - dynamic application modules catalog for permission configuration
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.authorization.services.module_permission_service import ModulePermissionService
+        modules = ModulePermissionService.get_modules_catalog(request.user)
+        return Response({"success": True, "modules": modules})
+

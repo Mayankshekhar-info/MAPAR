@@ -72,6 +72,29 @@ export interface OrganizationScopeItem {
   updated_at?: string | null;
 }
 
+export type ModuleAccessLevel = "NO_ACCESS" | "READ" | "WRITE";
+
+export interface UserModulePermissionItem {
+  module_id: number;
+  module_code: string;
+  module_name?: string;
+  description?: string;
+  icon?: string;
+  route_name?: string;
+  access_level: ModuleAccessLevel;
+}
+
+export interface ModuleCatalogItem {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  icon: string;
+  route_name: string;
+  sort_order: number;
+  supported_levels: { level: ModuleAccessLevel; label: string }[];
+}
+
 export interface UserDetail extends UserListItem {
   is_staff: boolean;
   is_superuser: boolean;
@@ -79,6 +102,7 @@ export interface UserDetail extends UserListItem {
   employee_id: string | null;
   roles: UserRoleBinding[];
   scopes?: OrganizationScopeItem[];
+  module_permissions?: UserModulePermissionItem[];
 }
 
 export interface CreateUserPayload {
@@ -98,6 +122,7 @@ export interface CreateUserPayload {
   employee_id?: string | null;
   status?: string;
   scopes?: OrganizationScopeItem[];
+  module_permissions?: UserModulePermissionItem[];
 }
 
 export interface UpdateUserPayload {
@@ -116,6 +141,7 @@ export interface UpdateUserPayload {
   status?: string;
   password?: string;
   scopes?: OrganizationScopeItem[];
+  module_permissions?: UserModulePermissionItem[];
 }
 
 

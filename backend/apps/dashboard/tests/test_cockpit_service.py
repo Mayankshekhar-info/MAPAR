@@ -46,6 +46,8 @@ class CockpitServiceTests(TestCase):
         kv = KPIValue.objects.first()
         if kv:
             detail = CockpitService.get_record_detail(kpi_value_id=kv.id)
+            self.assertIsNotNone(detail)
+            assert detail is not None
             self.assertIn("comparisons", detail)
             self.assertIn("staged_records", detail)
             self.assertIn("staged_columns", detail)
@@ -56,6 +58,8 @@ class CockpitServiceTests(TestCase):
         kv = KPIValue.objects.first()
         if kv:
             detail = SlideTableService.get_record_detail(record_id=kv.id)
+            self.assertIsNotNone(detail)
+            assert detail is not None
             self.assertIn("comparisons", detail)
             self.assertIn("staged_records", detail)
             self.assertIn("staged_columns", detail)

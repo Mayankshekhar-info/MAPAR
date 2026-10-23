@@ -83,6 +83,7 @@ export interface NodeDetail {
   children_count: number;
   allowed_child_level: HierarchyLevel | null;
   hierarchy_context?: Record<string, any>;
+  hierarchy_summary?: Record<string, any> | null;
   audits: NodeAuditEntry[];
 }
 
@@ -110,6 +111,16 @@ export interface CascadingOption {
   name: string;
   code: string;
   parent_id?: number;
+  parent_type?: string;
+  parent_name?: string;
+  region?: string;
+  project_id?: number;
+  project_name?: string;
+  sub_company_id?: number;
+  sub_company_name?: string;
+  main_company_id?: number;
+  main_company_name?: string;
+  is_direct?: boolean;
 }
 
 export interface HierarchySearchResult {

@@ -73,8 +73,7 @@ export const UserAccountsPage: React.FC = () => {
   };
 
   const handleOpenAccess = (user: UserListItem) => {
-    setInspectedUser(user);
-    setAccessDialogOpen(true);
+    navigate(`/permissions?user=${user.id}`);
   };
 
   const handleToggleStatus = (user: UserListItem) => {

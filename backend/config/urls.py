@@ -12,6 +12,8 @@ urlpatterns = [
     path("api/v1/users/", include("apps.users.api.urls")),
     path("api/v1/kpi/", include("apps.kpi.api.urls")),
     path("api/v1/reporting/", include("apps.reporting.api.urls")),
+    path("api/v1/governance/", include("apps.governance.api.urls")),
+    path("api/v1/notifications/", include("apps.notifications.api.urls")),
     # Master Data section completely disabled per architectural directive
     # path("api/v1/master-data/", include("apps.imports.api.master_data_urls")),
 ]

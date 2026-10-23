@@ -76,9 +76,9 @@ class OrganizationHierarchyService:
             raise ValidationError("Name and Code are mandatory fields.")
 
         # Validate parent requirement
-        expected_parent_level = cfg["parent_level"]
-        if expected_parent_level is not None and not parent_id:
-            parent_title = HIERARCHY_CONFIG[expected_parent_level]["name"]
+        expected_parent_level = str(cfg.get("parent_level") or "")
+        if expected_parent_level and not parent_id:
+            parent_title = HIERARCHY_CONFIG.get(expected_parent_level, {}).get("name", expected_parent_level)
             raise ValidationError(f"{cfg['name']} must belong to a valid {parent_title}.")
 
         obj = None
@@ -122,16 +122,50 @@ class OrganizationHierarchyService:
             )
 
         elif level == "CIRCLE":
-            parent = Project.objects.filter(id=parent_id).first()
-            if not parent:
-                raise ValidationError(f"Selected Project (ID {parent_id}) does not exist.")
-            if Circle.objects.filter(project=parent, code=code).exists():
-                raise ValidationError(f"Circle with code '{code}' already exists under {parent.name}.")
+            parent_level = (extra_fields or {}).get("parent_level") or (extra_fields or {}).get("parent_type")
+            main_co = None
+            sub_co = None
+            project = None
+
+            if parent_level == "MAIN_COMPANY":
+                main_co = MainCompany.objects.filter(id=parent_id).first()
+                if not main_co:
+                    raise ValidationError(f"Selected Main Company (ID {parent_id}) does not exist.")
+            elif parent_level == "SUB_COMPANY":
+                sub_co = SubCompany.objects.filter(id=parent_id).first()
+                if not sub_co:
+                    raise ValidationError(f"Selected Sub Company (ID {parent_id}) does not exist.")
+            elif parent_level == "PROJECT":
+                project = Project.objects.filter(id=parent_id).first()
+                if not project:
+                    raise ValidationError(f"Selected Project (ID {parent_id}) does not exist.")
+            else:
+                project = Project.objects.filter(id=parent_id).first()
+                if not project:
+                    sub_co = SubCompany.objects.filter(id=parent_id).first()
+                if not project and not sub_co:
+                    main_co = MainCompany.objects.filter(id=parent_id).first()
+
+            if not project and not sub_co and not main_co:
+                raise ValidationError(f"Selected parent Project, Sub Company, or Main Company (ID {parent_id}) does not exist.")
+
+            if project:
+                if Circle.objects.filter(project=project, code=code).exists():
+                    raise ValidationError(f"Circle with code '{code}' already exists under Project {project.name}.")
+            elif sub_co:
+                if Circle.objects.filter(sub_company=sub_co, code=code).exists():
+                    raise ValidationError(f"Circle with code '{code}' already exists under Sub Company {sub_co.name}.")
+            elif main_co:
+                if Circle.objects.filter(main_company=main_co, code=code).exists():
+                    raise ValidationError(f"Circle with code '{code}' already exists under Main Company {main_co.name}.")
+
             region = extra_fields.get("region", "North")
             head_name = extra_fields.get("head_name", "")
             head_email = extra_fields.get("head_email", "")
             obj = Circle.objects.create(
-                project=parent,
+                main_company=main_co,
+                sub_company=sub_co,
+                project=project,
                 name=name,
                 code=code,
                 region=region,
@@ -185,6 +219,9 @@ class OrganizationHierarchyService:
                 description=description,
                 status="ACTIVE",
             )
+
+        if obj is None:
+            raise ValidationError(f"Failed to create {cfg['name']}: unsupported level.")
 
         cls.log_audit(
             action="CREATE",
@@ -247,7 +284,10 @@ class OrganizationHierarchyService:
         }
 
         model = model_map.get(level)
-        obj = model.objects.filter(id=node_id).first()
+        if not model:
+            raise ValidationError(f"Invalid hierarchy level '{level}'.")
+
+        obj: Any = model.objects.filter(id=node_id).first()
         if not obj:
             raise ValidationError(f"{cfg['name']} with ID {node_id} does not exist.")
 
@@ -269,12 +309,33 @@ class OrganizationHierarchyService:
                     obj.sub_company = new_parent
                     parent_changed = True
             elif level == "CIRCLE":
-                new_parent = Project.objects.filter(id=parent_id).first()
-                if not new_parent:
-                    raise ValidationError(f"Project with ID {parent_id} does not exist.")
-                if obj.project_id != parent_id:
-                    obj.project = new_parent
-                    parent_changed = True
+                new_project = Project.objects.filter(id=parent_id).first()
+                new_sub_co = None
+                new_main_co = None
+                if not new_project:
+                    new_sub_co = SubCompany.objects.filter(id=parent_id).first()
+                if not new_project and not new_sub_co:
+                    new_main_co = MainCompany.objects.filter(id=parent_id).first()
+                if not new_project and not new_sub_co and not new_main_co:
+                    raise ValidationError(f"Project, Sub Company, or Main Company with ID {parent_id} does not exist.")
+                if new_project:
+                    if obj.project_id != parent_id or obj.sub_company_id is not None or obj.main_company_id is not None:
+                        obj.project = new_project
+                        obj.sub_company = None
+                        obj.main_company = None
+                        parent_changed = True
+                elif new_sub_co:
+                    if obj.sub_company_id != parent_id or obj.project_id is not None or obj.main_company_id is not None:
+                        obj.sub_company = new_sub_co
+                        obj.project = None
+                        obj.main_company = None
+                        parent_changed = True
+                elif new_main_co:
+                    if obj.main_company_id != parent_id or obj.project_id is not None or obj.sub_company_id is not None:
+                        obj.main_company = new_main_co
+                        obj.sub_company = None
+                        obj.project = None
+                        parent_changed = True
             elif level == "DOMAIN":
                 new_parent = Circle.objects.filter(id=parent_id).first()
                 if not new_parent:
@@ -310,6 +371,8 @@ class OrganizationHierarchyService:
         elif level == "CIRCLE":
             if obj.project and Circle.objects.filter(project=obj.project, code=code).exclude(id=node_id).exists():
                 raise ValidationError(f"Another Circle with code '{code}' exists under this Project.")
+            elif obj.main_company and Circle.objects.filter(main_company=obj.main_company, code=code).exclude(id=node_id).exists():
+                raise ValidationError(f"Another Circle with code '{code}' exists under this Main Company.")
         elif level == "DOMAIN":
             if obj.circle and Domain.objects.filter(circle=obj.circle, code=code).exclude(id=node_id).exists():
                 raise ValidationError(f"Another Domain with code '{code}' exists under this Circle.")
@@ -381,11 +444,28 @@ class OrganizationHierarchyService:
         }
 
         model = model_map.get(level)
-        obj = model.objects.filter(id=node_id).first()
+        if not model:
+            raise ValidationError(f"Invalid hierarchy level '{level}'.")
+
+        obj: Any = model.objects.filter(id=node_id).first()
         if not obj:
             raise ValidationError(f"{cfg['name']} with ID {node_id} does not exist.")
 
         # Check for children
+        if level == "MAIN_COMPANY":
+            sc_count = obj.sub_companies.count()
+            cir_count = obj.circles.count()
+            if sc_count > 0 or cir_count > 0:
+                parts = []
+                if sc_count > 0:
+                    parts.append(f"{sc_count} sub companies")
+                if cir_count > 0:
+                    parts.append(f"{cir_count} direct circles")
+                raise ValidationError(
+                    f"Cannot delete '{obj.name}'. It contains {', '.join(parts)}. "
+                    f"Please delete or reassign child nodes first."
+                )
+
         child_attr = {
             "MAIN_COMPANY": "sub_companies",
             "SUB_COMPANY": "projects",
@@ -400,7 +480,8 @@ class OrganizationHierarchyService:
         if child_attr and hasattr(obj, child_attr):
             child_count = getattr(obj, child_attr).count()
             if child_count > 0:
-                child_title = HIERARCHY_CONFIG[cfg["child_level"]]["plural_name"] if cfg.get("child_level") else "children"
+                child_level_val = str(cfg.get("child_level") or "")
+                child_title = HIERARCHY_CONFIG.get(child_level_val, {}).get("plural_name", "children") if child_level_val else "children"
                 raise ValidationError(
                     f"Cannot delete '{obj.name}'. It contains {child_count} child {child_title}. "
                     f"Please delete or reassign child nodes first."

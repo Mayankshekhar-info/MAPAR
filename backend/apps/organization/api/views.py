@@ -57,7 +57,26 @@ class HierarchyOptionsView(APIView):
         parent_id = request.query_params.get("parent_id")
         parent_id_int = int(parent_id) if parent_id and parent_id.isdigit() else None
 
-        options = get_cascading_options(level, parent_id_int, user=request.user)
+        company_id = request.query_params.get("company_id")
+        company_id_int = int(company_id) if company_id and company_id.isdigit() else None
+
+        sub_company_id = request.query_params.get("sub_company_id")
+        sub_company_id_int = int(sub_company_id) if sub_company_id and sub_company_id.isdigit() else None
+
+        project_id = request.query_params.get("project_id")
+        project_id_int = int(project_id) if project_id and project_id.isdigit() else None
+
+        parent_level = request.query_params.get("parent_level", "").upper() or None
+
+        options = get_cascading_options(
+            level,
+            parent_id=parent_id_int,
+            user=request.user,
+            company_id=company_id_int,
+            sub_company_id=sub_company_id_int,
+            project_id=project_id_int,
+            parent_level=parent_level,
+        )
         return Response({"success": True, "level": level, "options": options})
 
 

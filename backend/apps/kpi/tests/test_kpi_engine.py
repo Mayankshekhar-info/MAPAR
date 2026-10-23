@@ -360,6 +360,7 @@ class TestKPIEngineCalculations:
         assert init_res["calculated_value"] == 185.0
 
         row_to_edit = ImportStagedRow.objects.filter(batch=setup_data["batch"]).first()
+        assert row_to_edit is not None
         from apps.identity.models import User
         user = User.objects.filter(is_superuser=True).first()
         if not user:
@@ -379,6 +380,7 @@ class TestKPIEngineCalculations:
             hierarchy_level="CIRCLE",
             hierarchy_id=setup_data["circle_dl"].id,
         )
+        assert saved_kpi_res.calculated_value is not None
         assert float(saved_kpi_res.calculated_value) == 185.0
 
     def test_kpi_organization_level_assignment_and_funnel(self, setup_data):

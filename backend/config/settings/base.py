@@ -173,9 +173,72 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "identity.User"
 
+AUTHENTICATION_BACKENDS = [
+    "apps.identity.backends.EmailOrUsernameModelBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
+
 
 # Security defaults
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = False
 X_CONTENT_TYPE_OPTIONS = "nosniff"
 SECURE_REFERRER_POLICY = "same-origin"
+
+
+# Celery Configuration
+CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = False
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60
+
+from celery.schedules import crontab  # type: ignore
+
+CELERY_BEAT_SCHEDULE = {
+    # Friday: 1 reminder at 10:00 AM IST
+    "friday-reminder-10am": {
+        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
+        "schedule": crontab(minute=0, hour=10, day_of_week="friday"),
+        "kwargs": {"target_slot": "Friday:10:00"},
+    },
+    # Saturday: 3 reminders at 9:00 AM, 1:00 PM, 5:00 PM IST
+    "saturday-reminder-9am": {
+        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
+        "schedule": crontab(minute=0, hour=9, day_of_week="saturday"),
+        "kwargs": {"target_slot": "Saturday:09:00"},
+    },
+    "saturday-reminder-1pm": {
+        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
+        "schedule": crontab(minute=0, hour=13, day_of_week="saturday"),
+        "kwargs": {"target_slot": "Saturday:13:00"},
+    },
+    "saturday-reminder-5pm": {
+        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
+        "schedule": crontab(minute=0, hour=17, day_of_week="saturday"),
+        "kwargs": {"target_slot": "Saturday:17:00"},
+    },
+    # Sunday: 4 reminders at 9:00 AM, 12:00 PM, 3:00 PM, 6:00 PM IST
+    "sunday-reminder-9am": {
+        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
+        "schedule": crontab(minute=0, hour=9, day_of_week="sunday"),
+        "kwargs": {"target_slot": "Sunday:09:00"},
+    },
+    "sunday-reminder-12pm": {
+        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
+        "schedule": crontab(minute=0, hour=12, day_of_week="sunday"),
+        "kwargs": {"target_slot": "Sunday:12:00"},
+    },
+    "sunday-reminder-3pm": {
+        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
+        "schedule": crontab(minute=0, hour=15, day_of_week="sunday"),
+        "kwargs": {"target_slot": "Sunday:15:00"},
+    },
+    "sunday-reminder-6pm": {
+        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
+        "schedule": crontab(minute=0, hour=18, day_of_week="sunday"),
+        "kwargs": {"target_slot": "Sunday:18:00"},
+    },
+}
+

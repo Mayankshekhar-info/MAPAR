@@ -92,6 +92,20 @@ class Circle(models.Model):
         ACTIVE = "ACTIVE", "Active"
         INACTIVE = "INACTIVE", "Inactive"
 
+    main_company = models.ForeignKey(
+        MainCompany,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="circles"
+    )
+    sub_company = models.ForeignKey(
+        SubCompany,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="direct_circles"
+    )
     project = models.ForeignKey(Project, on_delete=models.CASCADE, null=True, blank=True, related_name="circles")
     name = models.CharField(max_length=150)
     code = models.CharField(max_length=50, db_index=True)
@@ -102,6 +116,26 @@ class Circle(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def direct_parent(self):
+        if self.project_id:
+            return self.project
+        if self.sub_company_id:
+            return self.sub_company
+        if self.main_company_id:
+            return self.main_company
+        return None
+
+    @property
+    def parent_level(self):
+        if self.project_id:
+            return "PROJECT"
+        if self.sub_company_id:
+            return "SUB_COMPANY"
+        if self.main_company_id:
+            return "MAIN_COMPANY"
+        return None
 
     class Meta:
         db_table = "organization_circle"

@@ -475,7 +475,7 @@ class CockpitService:
                 "calculation_status": kres.calculation_status if kres else "SUCCESS",
                 "error_message": kres.error_message if kres else "",
                 "source_dataset_name": kres.kpi.source_dataset.name if (kres and kres.kpi and kres.kpi.source_dataset) else None,
-                "source_dataset_id": kres.kpi.source_dataset_id if (kres and kres.kpi) else None,
+                "source_dataset_id": kres.kpi.source_dataset.id if (kres and kres.kpi and kres.kpi.source_dataset) else None,
             })
 
         # Fetch Linked Governance Observations / Issues

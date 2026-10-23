@@ -21,11 +21,32 @@ export const organizationService = {
     return res.data.counts;
   },
 
-  async getOptions(level: HierarchyLevel, parentId?: number | null): Promise<CascadingOption[]> {
+  async getOptions(
+    level: HierarchyLevel,
+    parentId?: number | null,
+    filters?: {
+      companyId?: number | null;
+      subCompanyId?: number | null;
+      projectId?: number | null;
+      parentLevel?: string | null;
+    }
+  ): Promise<CascadingOption[]> {
     const params = new URLSearchParams();
     params.set("level", level);
     if (parentId) {
       params.set("parent_id", String(parentId));
+    }
+    if (filters?.companyId) {
+      params.set("company_id", String(filters.companyId));
+    }
+    if (filters?.subCompanyId) {
+      params.set("sub_company_id", String(filters.subCompanyId));
+    }
+    if (filters?.projectId) {
+      params.set("project_id", String(filters.projectId));
+    }
+    if (filters?.parentLevel) {
+      params.set("parent_level", filters.parentLevel);
     }
     const res = await api.get<{ success: boolean; options: CascadingOption[] }>(
       `/organization/options/?${params.toString()}`

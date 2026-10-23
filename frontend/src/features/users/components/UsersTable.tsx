@@ -147,7 +147,7 @@ export const UsersTable: React.FC<UsersTableProps> = ({
                 {/* Actions */}
                 <TableCell align="center">
                   <Box sx={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0.5 }}>
-                    <Tooltip title="Inspect Effective Access">
+                    <Tooltip title="Configure Access & Scope">
                       <IconButton size="small" onClick={() => onViewAccess(u)} sx={{ color: colorTokens.primary.main }}>
                         <VpnKeyOutlinedIcon fontSize="small" />
                       </IconButton>

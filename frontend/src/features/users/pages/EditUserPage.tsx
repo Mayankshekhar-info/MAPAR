@@ -17,18 +17,14 @@ import Stack from "@mui/material/Stack";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
 import AdminPanelSettingsOutlinedIcon from "@mui/icons-material/AdminPanelSettingsOutlined";
-import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
-import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
+import VpnKeyOutlinedIcon from "@mui/icons-material/VpnKeyOutlined";
 import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 
 import { colorTokens, radiusTokens, shadowTokens } from "../../../app/theme/tokens";
-import { UpdateUserPayload, OrganizationScopeItem } from "../types/users.types";
+import { UpdateUserPayload } from "../types/users.types";
 import { useUserDetail, useUpdateUser } from "../hooks/useUsers";
 import { useRolesList } from "../../roles/hooks/useRoles";
-import { OrganizationScopeCard } from "../components/OrganizationScopeCard";
-import { OrganizationScopeDialog } from "../components/OrganizationScopeDialog";
-import { EffectiveAccessSummaryCard } from "../components/EffectiveAccessSummaryCard";
 
 export const EditUserPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -52,12 +48,6 @@ export const EditUserPage: React.FC = () => {
   // Form Fields - Enterprise Role
   const [roleId, setRoleId] = useState<number | "">("");
 
-  // Organization Access Scopes (Multi-Scope System)
-  const [scopes, setScopes] = useState<OrganizationScopeItem[]>([]);
-  const [scopeDialogOpen, setScopeDialogOpen] = useState(false);
-  const [editingScope, setEditingScope] = useState<OrganizationScopeItem | null>(null);
-  const [editingScopeIndex, setEditingScopeIndex] = useState<number | null>(null);
-
   // Validation & Error Feedback
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
@@ -78,38 +68,8 @@ export const EditUserPage: React.FC = () => {
         const primary = userDetail.roles.find((r) => r.is_primary) || userDetail.roles[0];
         setRoleId(primary.id);
       }
-
-      // Multi-Scopes
-      if (userDetail.scopes && userDetail.scopes.length > 0) {
-        setScopes(userDetail.scopes);
-      }
     }
   }, [userDetail]);
-
-  // Dialog Handlers
-  const handleOpenAddScope = () => {
-    setEditingScope(null);
-    setEditingScopeIndex(null);
-    setScopeDialogOpen(true);
-  };
-
-  const handleOpenEditScope = (scope: OrganizationScopeItem, index: number) => {
-    setEditingScope(scope);
-    setEditingScopeIndex(index);
-    setScopeDialogOpen(true);
-  };
-
-  const handleRemoveScope = (index: number) => {
-    setScopes((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleSaveScope = (savedScope: OrganizationScopeItem, editIndex: number | null) => {
-    if (editIndex !== null) {
-      setScopes((prev) => prev.map((s, idx) => (idx === editIndex ? savedScope : s)));
-    } else {
-      setScopes((prev) => [...prev, savedScope]);
-    }
-  };
 
   // Client-side Validation
   const validateForm = (): boolean => {
@@ -129,10 +89,6 @@ export const EditUserPage: React.FC = () => {
       errors.roleId = "Enterprise role assignment is required.";
     }
 
-    if (scopes.length === 0) {
-      errors.scopes = "Please assign at least one organization access scope.";
-    }
-
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -148,9 +104,6 @@ export const EditUserPage: React.FC = () => {
     }
 
     const selectedRole = rolesData?.find((r) => r.id === roleId);
-    const firstScope = scopes[0];
-    const resolvedCircleId = firstScope?.circle_id || null;
-    const resolvedTeamId = firstScope?.team_id || firstScope?.sub_department_id || null;
 
     const payload: UpdateUserPayload = {
       email: email.trim().toLowerCase(),
@@ -161,10 +114,6 @@ export const EditUserPage: React.FC = () => {
       status,
       role: selectedRole ? selectedRole.code : undefined,
       role_id: Number(roleId),
-      circle_id: resolvedCircleId,
-      sub_department_id: resolvedTeamId,
-      team_id: resolvedTeamId,
-      scopes,
     };
 
     updateUserMutation.mutate(
@@ -173,7 +122,7 @@ export const EditUserPage: React.FC = () => {
         onSuccess: () => {
           navigate("/users", {
             state: {
-              toastMessage: `User '${username}' updated successfully with ${scopes.length} access scope(s).`,
+              toastMessage: `User account '${username}' updated successfully.`,
             },
           });
         },
@@ -215,7 +164,7 @@ export const EditUserPage: React.FC = () => {
   }
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3.5 }, maxWidth: 1100, mx: "auto" }}>
+    <Box sx={{ p: { xs: 2, md: 3.5 }, maxWidth: 960, mx: "auto" }}>
       {/* 1. Dynamic Breadcrumbs */}
       <Breadcrumbs
         separator={<NavigateNextIcon fontSize="small" sx={{ color: colorTokens.text.muted }} />}
@@ -255,7 +204,7 @@ export const EditUserPage: React.FC = () => {
               Edit User Account
             </Typography>
             <Typography variant="body2" sx={{ color: colorTokens.text.secondary }}>
-              Update profile details, enterprise role capabilities, and assigned organization access scopes.
+              Update profile details, credentials, and assigned enterprise role.
             </Typography>
           </Box>
         </Box>
@@ -373,11 +322,18 @@ export const EditUserPage: React.FC = () => {
             />
           </Box>
 
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2.5 }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr 1fr" }, gap: 2.5 }}>
             <TextField
               label="Designation / Title"
               value={designation}
               onChange={(e) => setDesignation(e.target.value)}
+              fullWidth
+              size="small"
+            />
+            <TextField
+              label="Department"
+              value={department}
+              onChange={(e) => setDepartment(e.target.value)}
               fullWidth
               size="small"
             />
@@ -396,7 +352,7 @@ export const EditUserPage: React.FC = () => {
           </Box>
         </Card>
 
-        {/* SECTION 2: Enterprise Role */}
+        {/* SECTION 2: Enterprise Role Assignment */}
         <Card
           elevation={0}
           sx={{
@@ -423,10 +379,10 @@ export const EditUserPage: React.FC = () => {
             </Box>
             <Box>
               <Typography variant="subtitle1" sx={{ fontWeight: 800, color: colorTokens.text.primary }}>
-                2. Enterprise Role Assignment (WHAT)
+                2. Enterprise Role Assignment
               </Typography>
               <Typography variant="caption" sx={{ color: colorTokens.text.muted }}>
-                Defines what functional capabilities and modules the user is allowed to perform
+                Select an existing enterprise role definition. Role capabilities are managed in Enterprise Roles.
               </Typography>
             </Box>
           </Box>
@@ -476,118 +432,64 @@ export const EditUserPage: React.FC = () => {
           </TextField>
         </Card>
 
-        {/* SECTION 3: Organization Access & Scope (Multi-Scope Cards) */}
+        {/* SECTION 3: Access Scopes Action Banner */}
         <Card
           elevation={0}
           sx={{
-            p: 3.5,
+            p: 3,
             borderRadius: radiusTokens.md,
-            border: `1px solid ${formErrors.scopes ? colorTokens.status.error.main : colorTokens.workspace.border}`,
-            boxShadow: shadowTokens.card,
+            border: `1.5px dashed ${colorTokens.primary.main}`,
+            bgcolor: "rgba(21, 101, 192, 0.03)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 2,
           }}
         >
-          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2.5 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-              <Box
-                sx={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: radiusTokens.sm,
-                  bgcolor: "rgba(14, 116, 144, 0.1)",
-                  color: "#0e7490",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <AccountTreeOutlinedIcon fontSize="small" />
-              </Box>
-              <Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: colorTokens.text.primary }}>
-                  3. Organization Access & Scope (WHERE)
-                </Typography>
-                <Typography variant="caption" sx={{ color: colorTokens.text.muted }}>
-                  Assign one or multiple organizational boundaries. Hierarchy inheritance cascades downward strictly.
-                </Typography>
-              </Box>
-            </Box>
-
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<AddCircleOutlineIcon />}
-              onClick={handleOpenAddScope}
-              sx={{
-                borderRadius: radiusTokens.sm,
-                bgcolor: colorTokens.primary.main,
-                fontWeight: 700,
-                textTransform: "none",
-                "&:hover": { bgcolor: colorTokens.primary.dark },
-              }}
-            >
-              + Add Access Scope
-            </Button>
-          </Box>
-
-          <Divider sx={{ mb: 2.5 }} />
-
-          {formErrors.scopes && (
-            <Alert severity="error" sx={{ mb: 2.5, borderRadius: radiusTokens.sm }}>
-              {formErrors.scopes}
-            </Alert>
-          )}
-
-          {scopes.length === 0 ? (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
             <Box
               sx={{
-                p: 4,
-                textAlign: "center",
-                bgcolor: "#F8FAFC",
+                width: 44,
+                height: 44,
                 borderRadius: radiusTokens.sm,
-                border: `1.5px dashed ${colorTokens.workspace.border}`,
+                bgcolor: colorTokens.primary.lighter,
+                color: colorTokens.primary.main,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
               }}
             >
-              <AccountTreeOutlinedIcon sx={{ fontSize: 36, color: colorTokens.text.muted, mb: 1 }} />
-              <Typography variant="body2" sx={{ fontWeight: 700, color: colorTokens.text.primary, mb: 0.5 }}>
-                No Organization Access Scopes Assigned
-              </Typography>
-              <Typography variant="caption" sx={{ color: colorTokens.text.secondary, display: "block", mb: 2 }}>
-                Click "+ Add Access Scope" to assign the user to one or more organizational branches.
-              </Typography>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<AddCircleOutlineIcon />}
-                onClick={handleOpenAddScope}
-                sx={{ borderRadius: radiusTokens.sm, fontWeight: 600 }}
-              >
-                + Add Access Scope
-              </Button>
+              <VpnKeyOutlinedIcon />
             </Box>
-          ) : (
-            <Stack spacing={2}>
-              {scopes.map((scope, idx) => (
-                <OrganizationScopeCard
-                  key={idx}
-                  scope={scope}
-                  index={idx}
-                  onEdit={handleOpenEditScope}
-                  onRemove={handleRemoveScope}
-                />
-              ))}
-            </Stack>
-          )}
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: colorTokens.text.primary }}>
+                Configure Module Permissions & Organization Scope
+              </Typography>
+              <Typography variant="caption" sx={{ color: colorTokens.text.secondary, display: "block" }}>
+                Module Read/Write controls and geographic circle boundaries for <strong>{username}</strong> are configured in the dedicated <strong>Access Scopes</strong> section.
+              </Typography>
+            </Box>
+          </Box>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<VpnKeyOutlinedIcon />}
+            onClick={() => navigate(`/permissions?user=${userId}`)}
+            sx={{
+              borderRadius: radiusTokens.sm,
+              fontWeight: 700,
+              textTransform: "none",
+              bgcolor: colorTokens.primary.main,
+              "&:hover": { bgcolor: colorTokens.primary.dark },
+            }}
+          >
+            Configure Access & Scope →
+          </Button>
         </Card>
 
-        {/* SECTION 4: Effective Access Summary */}
-        <EffectiveAccessSummaryCard
-          roleName={selectedRoleObj?.name}
-          roleCode={selectedRoleObj?.code}
-          rolePermissions={[]}
-          scopes={scopes}
-        />
-
-        {/* SECTION 5: Bottom Action Bar */}
+        {/* Bottom Action Bar */}
         <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 2, pt: 1, pb: 4 }}>
           <Button
             variant="outlined"
@@ -611,20 +513,10 @@ export const EditUserPage: React.FC = () => {
               "&:hover": { bgcolor: colorTokens.primary.dark },
             }}
           >
-            {isSaving ? "Saving..." : "Save Changes"}
+            {isSaving ? "Saving..." : "Save Account Changes"}
           </Button>
         </Box>
       </Box>
-
-      {/* Cascading Scope Dialog */}
-      <OrganizationScopeDialog
-        open={scopeDialogOpen}
-        onClose={() => setScopeDialogOpen(false)}
-        onSave={handleSaveScope}
-        initialScope={editingScope}
-        editIndex={editingScopeIndex}
-        existingScopes={scopes}
-      />
     </Box>
   );
 };

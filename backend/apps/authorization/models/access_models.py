@@ -12,6 +12,7 @@ class AccessPermissionAction(models.Model):
     is_active = models.BooleanField(default=True)
 
     class Meta:
+        app_label = "authorization"
         db_table = "access_permissionaction"
         ordering = ["sort_order", "id"]
 
@@ -33,6 +34,7 @@ class AccessModule(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        app_label = "authorization"
         db_table = "access_module"
         ordering = ["sort_order", "id"]
 
@@ -52,6 +54,7 @@ class AccessPermission(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        app_label = "authorization"
         db_table = "access_permission"
         ordering = ["module__sort_order", "code"]
 
@@ -87,6 +90,7 @@ class AccessRole(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        app_label = "authorization"
         db_table = "access_role"
         ordering = ["name"]
 
@@ -101,6 +105,7 @@ class AccessRolePermission(models.Model):
     is_denied = models.BooleanField(default=False)
 
     class Meta:
+        app_label = "authorization"
         db_table = "access_rolepermission"
         unique_together = ("role", "permission")
 
@@ -117,6 +122,7 @@ class AccessUserRole(models.Model):
     assigned_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="role_assignments_made")
 
     class Meta:
+        app_label = "authorization"
         db_table = "access_userrole"
         unique_together = ("user", "role")
 
@@ -202,6 +208,7 @@ class UserAccessScope(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        app_label = "authorization"
         db_table = "access_useraccessscope"
         ordering = ["id"]
 
@@ -245,6 +252,8 @@ class UserAccessScope(models.Model):
             cir = getattr(dom, "circle", None)
         if cir and not prj:
             prj = getattr(cir, "project", None)
+            if not prj and not mc and getattr(cir, "main_company", None):
+                mc = cir.main_company
         if prj and not sc:
             sc = getattr(prj, "sub_company", None)
         if sc and not mc:
@@ -266,6 +275,7 @@ class UserAccessScopeCircle(models.Model):
     circle = models.ForeignKey("organization.Circle", on_delete=models.CASCADE, related_name="scope_assignments")
 
     class Meta:
+        app_label = "authorization"
         db_table = "access_useraccessscope_assigned_circles"
         unique_together = ("useraccessscope", "circle")
 
@@ -280,9 +290,41 @@ class UserAccessScopeDomain(models.Model):
     domain = models.ForeignKey("organization.Domain", on_delete=models.CASCADE, related_name="scope_assignments")
 
     class Meta:
+        app_label = "authorization"
         db_table = "access_useraccessscope_assigned_domains"
         unique_together = ("useraccessscope", "domain")
 
     def __str__(self):
         d_id = getattr(self, "domain_id", None)
         return f"Scope {self.useraccessscope_id} -> Domain {d_id}"
+
+
+class UserModulePermission(models.Model):
+    """
+    Direct module-level permission assigned to a user:
+    - NO_ACCESS: The module and its pages are not visible or accessible.
+    - READ: User can view permitted records and details but cannot create/edit/upload/delete.
+    - WRITE: User can view and perform permitted create/update operations within authorized scope.
+    """
+    class AccessLevel(models.TextChoices):
+        NO_ACCESS = "NO_ACCESS", "No Access"
+        READ = "READ", "Read Only"
+        WRITE = "WRITE", "Read & Write"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="module_permissions")
+    module = models.ForeignKey(AccessModule, on_delete=models.CASCADE, related_name="user_permissions")
+    access_level = models.CharField(max_length=20, choices=AccessLevel.choices, default=AccessLevel.READ)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "authorization"
+        db_table = "access_usermodulepermission"
+        unique_together = ("user", "module")
+        ordering = ["module__sort_order", "module__name"]
+
+    def __str__(self):
+        u_name = getattr(self.user, "username", str(self.user_id))
+        m_code = getattr(self.module, "code", str(self.module_id))
+        return f"{u_name} -> {m_code}: {self.access_level}"
+

@@ -8,6 +8,7 @@ from .access_models import (
     UserAccessScope,
     UserAccessScopeCircle,
     UserAccessScopeDomain,
+    UserModulePermission,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "UserAccessScope",
     "UserAccessScopeCircle",
     "UserAccessScopeDomain",
+    "UserModulePermission",
 ]

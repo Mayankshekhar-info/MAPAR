@@ -3,6 +3,7 @@ from django.db.models import Q
 from apps.identity.models import User
 from apps.authorization.models import AccessUserRole
 from apps.authorization.selectors.scope_selectors import get_user_scopes_list
+from apps.authorization.services.module_permission_service import ModulePermissionService
 from apps.organization.selectors.organization_selectors import get_node_hierarchy_context
 
 
@@ -207,6 +208,7 @@ def get_user_detail(user_id: int, request_user=None) -> Optional[Dict[str, Any]]
         "organization_scope": org_scope,
         "hierarchy_context": get_node_hierarchy_context("USER", u),
         "scopes": get_user_scopes_list(user_id=u.id),
+        "module_permissions": ModulePermissionService.get_user_module_permissions(u),
         "designation": u.designation,
         "phone": u.phone,
         "employee_id": u.employee_id,

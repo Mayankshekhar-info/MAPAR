@@ -77,6 +77,9 @@ export const CreateOrganizationModal: React.FC<CreateOrganizationModalProps> = (
       code: values.code,
       description: values.description,
       parent_id: parent?.id ?? null,
+      extra_fields: {
+        parent_level: parent?.level ?? null,
+      },
     });
     onClose();
   };

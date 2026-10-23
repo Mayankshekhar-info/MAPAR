@@ -53,6 +53,33 @@ class UserHierarchyScope:
     ancestor_domain_ids: Set[int] = field(default_factory=set)
     ancestor_department_ids: Set[int] = field(default_factory=set)
 
+    def is_main_company_allowed(self, mc_id: Optional[int], action: str = "view") -> bool:
+        if self.is_unrestricted:
+            return True
+        if mc_id is None:
+            return False
+        if action in ("manage", "edit", "create", "update", "delete"):
+            return mc_id in self.manageable_main_company_ids
+        return (self.main_company_ids is not None and mc_id in self.main_company_ids) or mc_id in self.ancestor_main_company_ids
+
+    def is_sub_company_allowed(self, sc_id: Optional[int], action: str = "view") -> bool:
+        if self.is_unrestricted:
+            return True
+        if sc_id is None:
+            return False
+        if action in ("manage", "edit", "create", "update", "delete"):
+            return sc_id in self.manageable_sub_company_ids
+        return (self.sub_company_ids is not None and sc_id in self.sub_company_ids) or sc_id in self.ancestor_sub_company_ids
+
+    def is_project_allowed(self, prj_id: Optional[int], action: str = "view") -> bool:
+        if self.is_unrestricted:
+            return True
+        if prj_id is None:
+            return False
+        if action in ("manage", "edit", "create", "update", "delete"):
+            return prj_id in self.manageable_project_ids
+        return (self.project_ids is not None and prj_id in self.project_ids) or prj_id in self.ancestor_project_ids
+
     def is_circle_allowed(self, circle_id: Optional[int], action: str = "view") -> bool:
         if self.is_unrestricted:
             return True
@@ -175,9 +202,13 @@ class HierarchyScopeEvaluator:
             main_company_ids.add(anchor_id)
             sub_company_ids.update(SubCompany.objects.filter(main_company_id=anchor_id).values_list("id", flat=True))
             project_ids.update(Project.objects.filter(sub_company__main_company_id=anchor_id).values_list("id", flat=True))
-            circle_ids.update(Circle.objects.filter(project__sub_company__main_company_id=anchor_id).values_list("id", flat=True))
+            circle_ids.update(Circle.objects.filter(
+                Q(project__sub_company__main_company_id=anchor_id) | Q(main_company_id=anchor_id)
+            ).values_list("id", flat=True))
             domain_ids.update(Domain.objects.filter(
-                Q(circle__project__sub_company__main_company_id=anchor_id) | Q(circle_id__isnull=True)
+                Q(circle__project__sub_company__main_company_id=anchor_id)
+                | Q(circle__main_company_id=anchor_id)
+                | Q(circle_id__isnull=True)
             ).values_list("id", flat=True))
             department_ids.update(Department.objects.filter(domain_id__in=domain_ids).values_list("id", flat=True))
             team_ids.update(SubDepartment.objects.filter(department_id__in=department_ids).values_list("id", flat=True))
@@ -222,14 +253,17 @@ class HierarchyScopeEvaluator:
             ).values_list("id", flat=True))
 
         elif anchor_level == "CIRCLE":
-            cir = Circle.objects.select_related("project__sub_company").filter(id=anchor_id).first()
-            if cir and cir.project and cir.project_id is not None:
-                ancestor_prj.add(cir.project_id)
-                sub_co = cir.project.sub_company
-                if sub_co and cir.project.sub_company_id is not None:
-                    ancestor_sub.add(cir.project.sub_company_id)
-                    if sub_co.main_company_id is not None:
-                        ancestor_main.add(sub_co.main_company_id)
+            cir = Circle.objects.select_related("project__sub_company", "main_company").filter(id=anchor_id).first()
+            if cir:
+                if cir.project and cir.project_id is not None:
+                    ancestor_prj.add(cir.project_id)
+                    sub_co = cir.project.sub_company
+                    if sub_co and cir.project.sub_company_id is not None:
+                        ancestor_sub.add(cir.project.sub_company_id)
+                        if sub_co.main_company_id is not None:
+                            ancestor_main.add(sub_co.main_company_id)
+                elif cir.main_company_id is not None:
+                    ancestor_main.add(cir.main_company_id)
             circle_ids.add(anchor_id)
             domain_ids.update(Domain.objects.filter(
                 Q(circle_id=anchor_id) | Q(circle_id__isnull=True)
@@ -242,7 +276,7 @@ class HierarchyScopeEvaluator:
             ).values_list("id", flat=True))
 
         elif anchor_level == "DOMAIN":
-            dom = Domain.objects.select_related("circle__project__sub_company").filter(id=anchor_id).first()
+            dom = Domain.objects.select_related("circle__project__sub_company", "circle__main_company").filter(id=anchor_id).first()
             if dom and dom.circle and dom.circle_id is not None:
                 ancestor_cir.add(dom.circle_id)
                 prj = dom.circle.project
@@ -253,6 +287,8 @@ class HierarchyScopeEvaluator:
                         ancestor_sub.add(prj.sub_company_id)
                         if sub_co.main_company_id is not None:
                             ancestor_main.add(sub_co.main_company_id)
+                elif dom.circle.main_company_id is not None:
+                    ancestor_main.add(dom.circle.main_company_id)
             domain_ids.add(anchor_id)
             department_ids.update(Department.objects.filter(domain_id=anchor_id).values_list("id", flat=True))
             team_ids.update(SubDepartment.objects.filter(department__domain_id=anchor_id).values_list("id", flat=True))
@@ -261,7 +297,7 @@ class HierarchyScopeEvaluator:
             ).values_list("id", flat=True))
 
         elif anchor_level == "DEPARTMENT":
-            dept = Department.objects.select_related("domain__circle__project__sub_company").filter(id=anchor_id).first()
+            dept = Department.objects.select_related("domain__circle__project__sub_company", "domain__circle__main_company").filter(id=anchor_id).first()
             if dept and dept.domain and dept.domain_id is not None:
                 ancestor_dom.add(dept.domain_id)
                 cir = dept.domain.circle
@@ -275,6 +311,8 @@ class HierarchyScopeEvaluator:
                             ancestor_sub.add(prj.sub_company_id)
                             if sub_co.main_company_id is not None:
                                 ancestor_main.add(sub_co.main_company_id)
+                    elif cir.main_company_id is not None:
+                        ancestor_main.add(cir.main_company_id)
             department_ids.add(anchor_id)
             team_ids.update(SubDepartment.objects.filter(department_id=anchor_id).values_list("id", flat=True))
             user_ids.update(User.objects.filter(
@@ -282,7 +320,7 @@ class HierarchyScopeEvaluator:
             ).values_list("id", flat=True))
 
         elif anchor_level in ("TEAM", "SUB_DEPARTMENT"):
-            sd = SubDepartment.objects.select_related("department__domain__circle__project__sub_company").filter(id=anchor_id).first()
+            sd = SubDepartment.objects.select_related("department__domain__circle__project__sub_company", "department__domain__circle__main_company").filter(id=anchor_id).first()
             if sd and sd.department and sd.department_id is not None:
                 ancestor_dept.add(sd.department_id)
                 dept_obj = sd.department
@@ -300,6 +338,8 @@ class HierarchyScopeEvaluator:
                                 ancestor_sub.add(prj.sub_company_id)
                                 if sub_co.main_company_id is not None:
                                     ancestor_main.add(sub_co.main_company_id)
+                        elif cir.main_company_id is not None:
+                            ancestor_main.add(cir.main_company_id)
             team_ids.add(anchor_id)
             user_ids.update(User.objects.filter(sub_department_id=anchor_id).values_list("id", flat=True))
 
@@ -370,60 +410,89 @@ class HierarchyScopeEvaluator:
             sub_id = getattr(s, "sub_company_id", None)
             mc_id = getattr(s, "main_company_id", None)
 
+            is_manageable = s.can_manage or s.can_create or s.can_update or ("manage" in (s.actions or []))
             if sd_id:
-                anchor_lvl = "TEAM"
-                anchor_i = sd_id
-                anchor_nm = s.sub_department.name if getattr(s, "sub_department", None) else f"Team {sd_id}"
-            elif dept_id:
-                anchor_lvl = "DEPARTMENT"
-                anchor_i = dept_id
-                anchor_nm = s.department.name if getattr(s, "department", None) else f"Dept {dept_id}"
-            elif dom_id:
-                anchor_lvl = "DOMAIN"
-                anchor_i = dom_id
-                anchor_nm = s.domain.name if getattr(s, "domain", None) else f"Domain {dom_id}"
-            elif cir_id:
-                anchor_lvl = "CIRCLE"
-                anchor_i = cir_id
-                anchor_nm = s.circle.name if getattr(s, "circle", None) else f"Circle {cir_id}"
-            elif prj_id:
-                anchor_lvl = "PROJECT"
-                anchor_i = prj_id
-                anchor_nm = s.project.name if getattr(s, "project", None) else f"Project {prj_id}"
-            elif sub_id:
-                anchor_lvl = "SUB_COMPANY"
-                anchor_i = sub_id
-                anchor_nm = s.sub_company.name if getattr(s, "sub_company", None) else f"SubCompany {sub_id}"
-            elif mc_id:
-                anchor_lvl = "MAIN_COMPANY"
-                anchor_i = mc_id
-                anchor_nm = s.main_company.name if getattr(s, "main_company", None) else f"MainCompany {mc_id}"
-            else:
-                # Check assigned_domains and assigned_circles
-                assigned_dom = s.assigned_domains.first()
-                if assigned_dom:
-                    anchor_lvl = "DOMAIN"
-                    dom_item_id = getattr(assigned_dom, "domain_id", None)
-                    anchor_i = dom_item_id
-                    anchor_nm = assigned_dom.domain.name if getattr(assigned_dom, "domain", None) else f"Domain {dom_item_id}"
-                else:
-                    assigned_cir = s.assigned_circles.first()
-                    if assigned_cir:
-                        anchor_lvl = "CIRCLE"
-                        cir_item_id = getattr(assigned_cir, "circle_id", None)
-                        anchor_i = cir_item_id
-                        anchor_nm = assigned_cir.circle.name if getattr(assigned_cir, "circle", None) else f"Circle {cir_item_id}"
-
-            if anchor_lvl and anchor_i:
-                actions_list = s.actions or []
-                is_manageable = s.can_manage or s.can_create or s.can_update or ("manage" in actions_list)
                 anchors_info.append({
                     "scope": s,
-                    "level": anchor_lvl,
-                    "id": anchor_i,
-                    "name": anchor_nm,
+                    "level": "TEAM",
+                    "id": sd_id,
+                    "name": s.sub_department.name if getattr(s, "sub_department", None) else f"Team {sd_id}",
                     "is_manageable": is_manageable,
                 })
+            elif dept_id:
+                anchors_info.append({
+                    "scope": s,
+                    "level": "DEPARTMENT",
+                    "id": dept_id,
+                    "name": s.department.name if getattr(s, "department", None) else f"Dept {dept_id}",
+                    "is_manageable": is_manageable,
+                })
+            elif dom_id:
+                anchors_info.append({
+                    "scope": s,
+                    "level": "DOMAIN",
+                    "id": dom_id,
+                    "name": s.domain.name if getattr(s, "domain", None) else f"Domain {dom_id}",
+                    "is_manageable": is_manageable,
+                })
+            elif cir_id:
+                anchors_info.append({
+                    "scope": s,
+                    "level": "CIRCLE",
+                    "id": cir_id,
+                    "name": s.circle.name if getattr(s, "circle", None) else f"Circle {cir_id}",
+                    "is_manageable": is_manageable,
+                })
+            elif prj_id:
+                anchors_info.append({
+                    "scope": s,
+                    "level": "PROJECT",
+                    "id": prj_id,
+                    "name": s.project.name if getattr(s, "project", None) else f"Project {prj_id}",
+                    "is_manageable": is_manageable,
+                })
+            elif sub_id:
+                anchors_info.append({
+                    "scope": s,
+                    "level": "SUB_COMPANY",
+                    "id": sub_id,
+                    "name": s.sub_company.name if getattr(s, "sub_company", None) else f"SubCompany {sub_id}",
+                    "is_manageable": is_manageable,
+                })
+            elif mc_id:
+                anchors_info.append({
+                    "scope": s,
+                    "level": "MAIN_COMPANY",
+                    "id": mc_id,
+                    "name": s.main_company.name if getattr(s, "main_company", None) else f"MainCompany {mc_id}",
+                    "is_manageable": is_manageable,
+                })
+
+            # Support multiple assigned circles within circle-level scope
+            if not sd_id and not dept_id and not dom_id:
+                for assigned_cir in s.assigned_circles.all():
+                    c_item_id = getattr(assigned_cir, "circle_id", None)
+                    if c_item_id and not any(a["level"] == "CIRCLE" and a["id"] == c_item_id for a in anchors_info):
+                        anchors_info.append({
+                            "scope": s,
+                            "level": "CIRCLE",
+                            "id": c_item_id,
+                            "name": assigned_cir.circle.name if getattr(assigned_cir, "circle", None) else f"Circle {c_item_id}",
+                            "is_manageable": is_manageable,
+                        })
+
+            # Support multiple assigned domains within domain-level scope
+            if not sd_id and not dept_id:
+                for assigned_dom in s.assigned_domains.all():
+                    d_item_id = getattr(assigned_dom, "domain_id", None)
+                    if d_item_id and not any(a["level"] == "DOMAIN" and a["id"] == d_item_id for a in anchors_info):
+                        anchors_info.append({
+                            "scope": s,
+                            "level": "DOMAIN",
+                            "id": d_item_id,
+                            "name": assigned_dom.domain.name if getattr(assigned_dom, "domain", None) else f"Domain {d_item_id}",
+                            "is_manageable": is_manageable,
+                        })
 
         # Fallback to direct user account hierarchy fields if no UserAccessScope
         if not anchors_info:
@@ -524,7 +593,7 @@ class HierarchyScopeEvaluator:
             scope_level=scope_lvl,
             anchor_id=anchor_i,
             anchor_name=anchor_nm,
-            scopes_count=len(anchors_info),
+            scopes_count=len(scopes) if scopes else len(anchors_info),
             main_company_ids=total_main_company_ids,
             sub_company_ids=total_sub_company_ids,
             project_ids=total_project_ids,
