@@ -1,0 +1,486 @@
+import React from "react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import "@testing-library/jest-dom";
+import { GovernanceOwnerDashboardCard } from "../components/GovernanceOwnerDashboardCard";
+import { MandatoryEvidenceClosureModal } from "../components/MandatoryEvidenceClosureModal";
+import { GovernanceStatusMatrix } from "../components/GovernanceStatusMatrix";
+import { GovernanceActiveFiltersBar } from "../components/GovernanceActiveFiltersBar";
+import { GovernanceOverdueAnalysis } from "../components/GovernanceOverdueAnalysis";
+import { GovernanceTargetTimeline } from "../components/GovernanceTargetTimeline";
+import { GovernanceFollowUpSection } from "../components/GovernanceFollowUpSection";
+import { GovernanceExecutionCard } from "../components/GovernanceExecutionCard";
+import { GovernancePeriodControl } from "../components/GovernancePeriodControl";
+import { MyProgressMetrics, GovernanceActionPoint, GovernanceMetrics, OwnerDistribution } from "../types/governance.types";
+
+describe("GovernanceOwnerDashboardCard Component", () => {
+  const sampleProgress: MyProgressMetrics = {
+    total: 12,
+    open: 2,
+    wip: 6,
+    closed: 4,
+    overdue: 1,
+    upcoming: 3,
+    missing_weekly: 2,
+    completion_rate: 33.3,
+    evidence_pending: 1,
+    evidence_accepted: 3,
+    evidence_rework: 1,
+    evidence_not_submitted: 4,
+  };
+
+  it("renders owner progress metrics correctly", () => {
+    const handleQuickFilter = vi.fn();
+    render(
+      <GovernanceOwnerDashboardCard
+        myProgress={sampleProgress}
+        onQuickFilter={handleQuickFilter}
+      />
+    );
+
+    // Total Assigned
+    expect(screen.getByText("TOTAL ASSIGNED")).toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
+
+    // In Progress
+    expect(screen.getByText("IN PROGRESS (WIP)")).toBeInTheDocument();
+    expect(screen.getByText("6")).toBeInTheDocument();
+
+    // Completed
+    expect(screen.getByText("COMPLETED")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
+
+    // Completion percentage
+    expect(screen.getByText(/33\.3%/)).toBeInTheDocument();
+
+    // Evidence status chips
+    expect(screen.getByText("Accepted: 3")).toBeInTheDocument();
+    expect(screen.getByText("Pending Review: 1")).toBeInTheDocument();
+    expect(screen.getByText("Rework Needed: 1")).toBeInTheDocument();
+  });
+
+  it("triggers onQuickFilter when a card is clicked", () => {
+    const handleQuickFilter = vi.fn();
+    render(
+      <GovernanceOwnerDashboardCard
+        myProgress={sampleProgress}
+        onQuickFilter={handleQuickFilter}
+      />
+    );
+
+    const wipCard = screen.getByText("IN PROGRESS (WIP)");
+    fireEvent.click(wipCard);
+    expect(handleQuickFilter).toHaveBeenCalledWith({ status: "WIP", view_mode: "my_tasks" });
+  }, 15000);
+});
+
+describe("MandatoryEvidenceClosureModal Component", () => {
+  const sampleAction: GovernanceActionPoint = {
+    id: 99,
+    action_id: "ACT-RAJ-099",
+    circle: { id: 1, name: "Rajasthan Circle", code: "RAJ", region: "North" },
+    function_area: "Operations",
+    action_point: "Test Mandatory Proof Enforcement",
+    key_deliverable: "Deliver evidence or stay open",
+    owner: { id: 1, username: "rverma", full_name: "Rahul Verma", email: "rverma@telecrats.com", role: "Auditee" },
+    owner_name_override: "Rahul Verma",
+    raised_date: "2026-10-01",
+    target_closure_date: "2026-10-20",
+    current_target_date: "2026-10-20",
+    status: "WIP",
+    priority: "High",
+    evidence_required: true,
+    evidence_status: "Not Submitted",
+    evidence_items: [],
+    revision_count: 0,
+    ageing_days: 21,
+    ageing_bucket: "16-30 Days",
+    weeks_in_review: 2,
+    last_update: "2026-10-15",
+    is_overdue: true,
+    is_escalated: false,
+    current_progress_percent: 75,
+    created_at: "2026-10-01",
+    updated_at: "2026-10-15",
+  };
+
+  it("displays policy alert and upload fields when opened", () => {
+    render(
+      <MandatoryEvidenceClosureModal
+        open={true}
+        action={sampleAction}
+        onClose={vi.fn()}
+        onEvidenceUploaded={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Evidence Required Before Closure")).toBeInTheDocument();
+    expect(screen.getByText("Task Closure Is Restricted")).toBeInTheDocument();
+    expect(screen.getByText(/requires verified evidence/i)).toBeInTheDocument();
+  }, 15000);
+});
+
+import { GovernanceMetricsBar } from "../components/GovernanceMetricsBar";
+import { GovernanceBreakdownTabs } from "../components/GovernanceBreakdownTabs";
+
+
+describe("GovernanceMetricsBar Component", () => {
+  const sampleMetrics = {
+    total_actions: 10,
+    open_count: 3,
+    wip_count: 4,
+    closed_count: 3,
+    overdue_count: 2,
+    avg_days_late: 5,
+    pending_evidence_count: 1,
+    accepted_evidence_count: 2,
+    rework_evidence_count: 0,
+  } as unknown as GovernanceMetrics;
+
+  it("renders metric cards with values and subtitles", () => {
+    const handleFilterChange = vi.fn();
+    render(
+      <GovernanceMetricsBar
+        metrics={sampleMetrics}
+        onFilterChange={handleFilterChange}
+      />
+    );
+
+    expect(screen.getByText("Total Actions")).toBeInTheDocument();
+    expect(screen.getByText("Open")).toBeInTheDocument();
+    expect(screen.getByText("Work in Progress")).toBeInTheDocument();
+    expect(screen.getByText("Closed")).toBeInTheDocument();
+    expect(screen.getByText("Overdue")).toBeInTheDocument();
+
+    // Check subtitle
+    expect(screen.getByText("4 in progress")).toBeInTheDocument();
+    expect(screen.getByText("30% closed")).toBeInTheDocument();
+    expect(screen.getByText("avg 5d late")).toBeInTheDocument();
+  });
+
+  it("triggers onFilterChange when Overdue card is clicked", () => {
+    const handleFilterChange = vi.fn();
+    render(
+      <GovernanceMetricsBar
+        metrics={sampleMetrics}
+        onFilterChange={handleFilterChange}
+      />
+    );
+
+    const overdueCard = screen.getByText("Overdue");
+    fireEvent.click(overdueCard);
+    expect(handleFilterChange).toHaveBeenCalledWith({ is_overdue: true });
+  });
+});
+
+describe("GovernanceBreakdownTabs Component", () => {
+  const sampleOwners = [
+    {
+      owner_id: 1,
+      owner_name: "Rahul Verma",
+      username: "rverma",
+      initials: "RV",
+      total: 5,
+      open: 2,
+      wip: 1,
+      closed: 2,
+      overdue: 1,
+      evidence_pending: 0,
+      completion_rate: 40,
+    },
+  ] as unknown as OwnerDistribution[];
+
+  const sampleMetrics = {
+    owner_distribution: sampleOwners,
+    circle_distribution: [
+      { circle__id: 1, circle__name: "Delhi", circle__code: "DEL", circle__region: "North", total: 6, open: 2, wip: 1, closed: 2, overdue: 1, escalated: 0, completion_rate: 33 },
+    ],
+    bucket_counts: { "0-7 Days": 2, "8-15 Days": 1, "16-30 Days": 0, "30+ Days": 0 },
+    closure_performance: { on_time_closed: 2, delayed_closed: 0, on_time_rate: 100 },
+  } as unknown as GovernanceMetrics;
+
+  it("renders owner breakdown table with initials and allows selecting an owner", () => {
+    const handleSelectOwner = vi.fn();
+    const handleSelectCircle = vi.fn();
+    const handleSelectBucket = vi.fn();
+
+    render(
+      <GovernanceBreakdownTabs
+        metrics={sampleMetrics}
+        onSelectOwner={handleSelectOwner}
+        onSelectCircle={handleSelectCircle}
+        onSelectBucket={handleSelectBucket}
+      />
+    );
+
+    expect(screen.getByText("Owner-Wise Workload & Accountability")).toBeInTheDocument();
+    expect(screen.getByText("Rahul Verma")).toBeInTheDocument();
+    expect(screen.getByText("RV")).toBeInTheDocument();
+    expect(screen.getByText("@rverma")).toBeInTheDocument();
+
+    // Click owner row
+    fireEvent.click(screen.getByText("Rahul Verma"));
+    expect(handleSelectOwner).toHaveBeenCalledWith(1);
+  });
+});
+
+describe("GovernanceStatusMatrix Component", () => {
+  const sampleMetrics = {
+    total_actions: 10,
+    open_count: 3,
+    wip_count: 2,
+    closed_count: 5,
+    overdue_count: 2,
+    completion_rate: 50,
+    circle_distribution: [
+      {
+        circle__id: 1,
+        circle__name: "Punjab",
+        circle__code: "PB",
+        circle__region: "North",
+        total: 10,
+        open: 3,
+        wip: 2,
+        closed: 5,
+        overdue: 2,
+        completion_rate: 50,
+      },
+    ],
+    owner_distribution: [
+      {
+        owner_id: 101,
+        owner_name: "Amit Kumar",
+        username: "akumar",
+        initials: "AK",
+        total: 10,
+        open: 3,
+        wip: 2,
+        closed: 5,
+        overdue: 2,
+        completion_rate: 50,
+      },
+    ],
+  } as unknown as GovernanceMetrics;
+
+  it("renders status matrix with circles, grand totals, and triggers onCellClick", () => {
+    const handleCellClick = vi.fn();
+    render(
+      <GovernanceStatusMatrix
+        metrics={sampleMetrics}
+        onCellClick={handleCellClick}
+      />
+    );
+
+    expect(screen.getByText("Action Status Matrix")).toBeInTheDocument();
+    expect(screen.getByText("Punjab")).toBeInTheDocument();
+    expect(screen.getByText("PB")).toBeInTheDocument();
+    expect(screen.getByText("Enterprise Grand Total")).toBeInTheDocument();
+
+    // Click Open cell for Punjab
+    fireEvent.click(screen.getByText("Punjab"));
+    expect(handleCellClick).toHaveBeenCalledWith({ circle_id: 1 });
+  });
+
+  it("allows switching grouping to By Owner", () => {
+    const handleCellClick = vi.fn();
+    render(
+      <GovernanceStatusMatrix
+        metrics={sampleMetrics}
+        onCellClick={handleCellClick}
+      />
+    );
+
+    const byOwnerBtn = screen.getByText("By Owner");
+    fireEvent.click(byOwnerBtn);
+
+    expect(screen.getByText("Amit Kumar")).toBeInTheDocument();
+    expect(screen.getByText("AK")).toBeInTheDocument();
+  });
+});
+
+describe("GovernanceActiveFiltersBar Component", () => {
+  it("renders active filter chips and handles remove and clear all", () => {
+    const handleFilterChange = vi.fn();
+    const handleClearAll = vi.fn();
+
+    render(
+      <GovernanceActiveFiltersBar
+        filters={{
+          circle_id: 1,
+          status: "Open",
+          is_overdue: true,
+        }}
+        metadata={{
+          circles: [{ id: 1, name: "Punjab", code: "PB", region: "North" }],
+          users: [],
+          statuses: [],
+          priorities: [],
+          evidence_statuses: [],
+        } as unknown as any}
+        onFilterChange={handleFilterChange}
+        onClearAll={handleClearAll}
+      />
+    );
+
+    expect(screen.getByText(/Circle: Punjab \(PB\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Status: Open/)).toBeInTheDocument();
+    expect(screen.getByText(/Overdue Actions Only/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Clear All Filters"));
+    expect(handleClearAll).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GovernanceOverdueAnalysis Component", () => {
+  it("renders clean zero empty state when no metrics or records exist", () => {
+    const handleBucket = vi.fn();
+    const handleOverdue = vi.fn();
+
+    render(
+      <GovernanceOverdueAnalysis
+        metrics={undefined}
+        onSelectBucket={handleBucket}
+        onSelectOverdue={handleOverdue}
+      />
+    );
+
+    expect(screen.getByText("Overdue Analysis & Ageing Performance")).toBeInTheDocument();
+    expect(screen.getByText("Total Overdue Actions")).toBeInTheDocument();
+    expect(screen.getByText("Average Delay")).toBeInTheDocument();
+    expect(screen.getByText("Not Yet Due (On Track)")).toBeInTheDocument();
+    expect(screen.getByText("> 15 Days Overdue (Critical)")).toBeInTheDocument();
+  });
+});
+
+describe("GovernanceTargetTimeline Component", () => {
+  it("renders friendly empty state when timeline has no deadlines", () => {
+    const handleSelectAction = vi.fn();
+
+    render(
+      <GovernanceTargetTimeline
+        timeline={[]}
+        onSelectAction={handleSelectAction}
+      />
+    );
+
+    expect(screen.getByText("Target Deadline Timeline")).toBeInTheDocument();
+    expect(screen.getByText("No Upcoming Deadlines")).toBeInTheDocument();
+  });
+});
+
+describe("GovernanceFollowUpSection Component", () => {
+  it("renders clean zero risk empty state when urgentItems is empty", () => {
+    const handleSelectAction = vi.fn();
+
+    render(
+      <GovernanceFollowUpSection
+        urgentItems={[]}
+        onSelectAction={handleSelectAction}
+      />
+    );
+
+    expect(screen.getByText("Actionable Risks & Urgent Follow-up")).toBeInTheDocument();
+    expect(screen.getByText("Zero Urgent Risks")).toBeInTheDocument();
+  });
+});
+
+describe("GovernanceExecutionCard Component", () => {
+  it("renders tabbed deadlines card and allows switching between timeline and urgent risks", () => {
+    const handleSelectAction = vi.fn();
+
+    render(
+      <GovernanceExecutionCard
+        timeline={[]}
+        urgentItems={[]}
+        onSelectAction={handleSelectAction}
+      />
+    );
+
+    expect(screen.getByText(/Target Timeline \(0\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Urgent Follow-Up \(0\)/)).toBeInTheDocument();
+
+    // Default tab shows Target Timeline empty state
+    expect(screen.getByText("No Upcoming Deadlines")).toBeInTheDocument();
+
+    // Switch to Urgent Follow-Up tab
+    fireEvent.click(screen.getByText(/Urgent Follow-Up \(0\)/));
+    expect(screen.getByText("Zero Urgent Risks")).toBeInTheDocument();
+  });
+});
+
+describe("GovernancePeriodControl Component", () => {
+  it("renders with available weeks from imported data and displays selected week", () => {
+    const handleChangePeriod = vi.fn();
+    const availableWeeks = ["Week 43", "Week 42", "Week 41"];
+
+    render(
+      <GovernancePeriodControl
+        currentReportingWeek="Week 43"
+        asOfDate="23-Oct-26"
+        selectedWeek="Week 42"
+        availableWeeks={availableWeeks}
+        onChangePeriod={handleChangePeriod}
+      />
+    );
+
+    // Active button displays the selected week
+    expect(screen.getByText("Week 42")).toBeInTheDocument();
+    expect(screen.getByText("As of: 23-Oct-26")).toBeInTheDocument();
+
+    // Clicking dropdown button opens menu listing available weeks
+    fireEvent.click(screen.getByText("Week 42"));
+    expect(screen.getByText("All Periods (Full Portfolio)")).toBeInTheDocument();
+    expect(screen.getByText("Week 43 (Latest)")).toBeInTheDocument();
+    expect(screen.getByText("Week 41")).toBeInTheDocument();
+
+    // Selecting Week 43 calls onChangePeriod with Week 43
+    fireEvent.click(screen.getByText("Week 43 (Latest)"));
+    expect(handleChangePeriod).toHaveBeenCalledWith({ reporting_week: "Week 43" });
+  });
+
+  it("handles empty available weeks cleanly without falling back to arbitrary calendar weeks", () => {
+    const handleChangePeriod = vi.fn();
+
+    render(
+      <GovernancePeriodControl
+        asOfDate="23-Oct-26"
+        selectedWeek={undefined}
+        availableWeeks={[]}
+        onChangePeriod={handleChangePeriod}
+      />
+    );
+
+    expect(screen.getByText("All Periods")).toBeInTheDocument();
+
+    // Opening dropdown shows empty state message
+    fireEvent.click(screen.getByText("All Periods"));
+    expect(screen.getByText("No reporting weeks in uploaded data")).toBeInTheDocument();
+  });
+
+  it("navigates older and newer weeks using step buttons", () => {
+    const handleChangePeriod = vi.fn();
+    const availableWeeks = ["Week 43", "Week 42", "Week 41"];
+
+    render(
+      <GovernancePeriodControl
+        selectedWeek="Week 42"
+        availableWeeks={availableWeeks}
+        onChangePeriod={handleChangePeriod}
+      />
+    );
+
+    // Step button to older week (<) should select Week 41
+    const olderBtn = screen.getByTestId("ChevronLeftIcon").closest("button")!;
+    fireEvent.click(olderBtn);
+    expect(handleChangePeriod).toHaveBeenCalledWith({ reporting_week: "Week 41" });
+
+    // Step button to newer week (>) should select Week 43
+    const newerBtn = screen.getByTestId("ChevronRightIcon").closest("button")!;
+    fireEvent.click(newerBtn);
+    expect(handleChangePeriod).toHaveBeenCalledWith({ reporting_week: "Week 43" });
+  });
+});
+
+
+
+
