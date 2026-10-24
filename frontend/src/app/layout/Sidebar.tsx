@@ -15,7 +15,6 @@ import ExpandLess from "@mui/icons-material/ExpandLess";
 import ExpandMore from "@mui/icons-material/ExpandMore";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import AssessmentIcon from "@mui/icons-material/Assessment";
 import { useAuth } from "../../features/auth";
 import { NavigationItem } from "../navigation/navigation.types";
 import { resolveNavigation } from "../navigation/navigation.resolver";
@@ -94,36 +93,59 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <Box
             sx={{
-              width: 36,
-              height: 36,
+              width: 38,
+              height: 38,
               borderRadius: radiusTokens.md,
-              background: `linear-gradient(135deg, ${colorTokens.primary.main} 0%, #0369A1 100%)`,
+              bgcolor: "#FFFFFF",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "#FFFFFF",
-              boxShadow: `0 2px 8px ${colorTokens.nav.accentGlow}`,
+              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.3)",
               flexShrink: 0,
+              p: 0.5,
+              border: "1px solid rgba(255, 255, 255, 0.25)",
             }}
           >
-            <AssessmentIcon sx={{ fontSize: 20 }} />
+            <Box
+              component="img"
+              src="/pratap_icon.png"
+              alt="Pratap"
+              sx={{
+                width: 26,
+                height: 26,
+                objectFit: "contain",
+                display: "block",
+              }}
+            />
           </Box>
           {!collapsed && (
             <Box sx={{ minWidth: 0 }}>
-              <Typography
-                variant="h6"
-                sx={{
-                  fontWeight: 800,
-                  letterSpacing: "0.08em",
-                  fontSize: "1rem",
-                  lineHeight: 1.15,
-                  background: "linear-gradient(180deg, #FFFFFF 0%, #CBD5E1 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                }}
-              >
-                PAGMS
-              </Typography>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.8 }}>
+                <Typography
+                  variant="subtitle1"
+                  sx={{
+                    fontWeight: 800,
+                    letterSpacing: "0.04em",
+                    fontSize: "1.05rem",
+                    lineHeight: 1.15,
+                    color: "#FFFFFF",
+                  }}
+                >
+                  PRATAP
+                </Typography>
+                <Chip
+                  label="PAGMS"
+                  size="small"
+                  sx={{
+                    bgcolor: "rgba(16, 185, 129, 0.15)",
+                    color: "#34D399",
+                    fontWeight: 800,
+                    fontSize: "0.62rem",
+                    height: 18,
+                    border: "1px solid rgba(52, 211, 153, 0.3)",
+                  }}
+                />
+              </Box>
               <Typography
                 variant="caption"
                 sx={{
@@ -132,6 +154,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   letterSpacing: "0.04em",
                   fontWeight: 600,
                   display: "block",
+                  mt: 0.2,
                 }}
               >
                 ENTERPRISE COCKPIT

@@ -387,185 +387,139 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
-      {/* Top Header customized per tab */}
-      <Box
-        sx={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 2,
-          mb: 3,
-        }}
-      >
-        <Box>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 0.5 }}>
-            {effectiveMode === "governance" && (
-              <SecurityIcon sx={{ fontSize: 28, color: colorTokens.primary.main }} />
-            )}
-            {effectiveMode === "audit" && (
-              <AssignmentTurnedInOutlinedIcon sx={{ fontSize: 28, color: colorTokens.primary.main }} />
-            )}
-            {effectiveMode === "documents" && (
-              <FolderSharedOutlinedIcon sx={{ fontSize: 28, color: colorTokens.primary.main }} />
-            )}
-            <Typography variant="h5" sx={{ fontWeight: 800, color: colorTokens.text.primary, letterSpacing: "-0.02em" }}>
-              {effectiveMode === "governance" && "Governance and Action"}
+      {/* Top Executive Header */}
+      <Box sx={{ mb: 2.5 }}>
+        {/* Row 1: Title & Primary CTA */}
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 2,
+            mb: 0.75,
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.75, flexWrap: "wrap" }}>
+            <Box
+              sx={{
+                width: 46,
+                height: 46,
+                borderRadius: "12px",
+                bgcolor: "#EFF6FF",
+                border: "1px solid #BFDBFE",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: colorTokens.primary.main,
+                boxShadow: "0 2px 6px rgba(2, 132, 199, 0.15)",
+                flexShrink: 0,
+              }}
+            >
+              {effectiveMode === "governance" && (
+                <SecurityIcon sx={{ fontSize: 28 }} />
+              )}
+              {effectiveMode === "audit" && (
+                <AssignmentTurnedInOutlinedIcon sx={{ fontSize: 28 }} />
+              )}
+              {effectiveMode === "documents" && (
+                <FolderSharedOutlinedIcon sx={{ fontSize: 28 }} />
+              )}
+            </Box>
+
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 900,
+                color: "#0F172A",
+                letterSpacing: "-0.03em",
+                fontSize: { xs: "1.5rem", sm: "1.75rem", md: "1.95rem" },
+                lineHeight: 1.2,
+              }}
+            >
+              {effectiveMode === "governance" && "Governance & Action Tracker"}
               {effectiveMode === "audit" && "Audit & Action Owners"}
               {effectiveMode === "documents" && "Evidence Documents"}
             </Typography>
+
             {effectiveMode === "governance" && metricsData?.reporting_week && (
               <Chip
                 label={`${metricsData.reporting_week} • as of ${metricsData.as_of_date || "Today"}`}
-                size="small"
+                size="medium"
                 sx={{
                   backgroundColor: "#F0F9FF",
-                  color: colorTokens.primary.dark,
-                  fontWeight: 600,
-                  fontSize: "0.75rem",
+                  color: "#0369A1",
+                  fontWeight: 700,
+                  fontSize: "0.82rem",
+                  height: 30,
+                  px: 0.5,
                   border: "1px solid #BAE6FD",
+                  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.04)",
                 }}
               />
             )}
             {effectiveMode === "governance" && metricsData?.on_track_score !== undefined && (
               <Chip
                 label={`${metricsData.on_track_score}% On Track`}
-                size="small"
+                size="medium"
                 sx={{
                   backgroundColor: metricsData.on_track_score >= 70 ? "#ECFDF5" : "#FFFBEB",
-                  color: metricsData.on_track_score >= 70 ? "#065F46" : "#92400E",
-                  fontWeight: 700,
-                  fontSize: "0.75rem",
+                  color: metricsData.on_track_score >= 70 ? "#047857" : "#B45309",
+                  fontWeight: 800,
+                  fontSize: "0.82rem",
+                  height: 30,
+                  px: 0.5,
                   border: `1px solid ${metricsData.on_track_score >= 70 ? "#A7F3D0" : "#FDE68A"}`,
+                  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.04)",
                 }}
               />
             )}
           </Box>
-          <Typography variant="body2" sx={{ color: colorTokens.text.secondary }}>
-            {effectiveMode === "governance" &&
-              "Task creation across organization hierarchy, creator dashboard, live risk metrics, and detailed task analysis."}
-            {effectiveMode === "audit" &&
-              "Assigned task execution, week-wise progress reporting, blocker tracking, and revision history."}
-            {effectiveMode === "documents" &&
-              "Task-linked proof submission (images & PDFs), authorized review decisions, rework feedback, and document history."}
-          </Typography>
-        </Box>
 
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+          {/* Primary Action Button on Top Right */}
           {effectiveMode === "governance" && (
-            <GovernancePeriodControl
-              currentReportingWeek={metricsData?.reporting_week}
-              asOfDate={metricsData?.as_of_date}
-              selectedWeek={filters.reporting_week}
-              availableWeeks={metricsData?.available_weeks || metadata?.available_weeks || []}
-              onChangePeriod={handlePeriodChange}
-            />
-          )}
-
-          <Tooltip title="Refresh Data" arrow>
-            <IconButton onClick={handleRefresh} size="small" sx={{ border: "1px solid #E2E8F0" }}>
-              <RefreshIcon sx={{ fontSize: 20, color: colorTokens.text.secondary }} />
-            </IconButton>
-          </Tooltip>
-
-          {effectiveMode === "governance" && (
-            <>
-              <Button
-                variant="outlined"
-                startIcon={<CloudDownloadOutlinedIcon />}
-                onClick={async () => {
-                  try {
-                    await governanceService.exportGovernanceWorkbook(filters);
-                    showToast("Governance & Action Tracking workbook exported successfully.");
-                  } catch {
-                    showToast("Failed to export workbook.", "error");
-                  }
-                }}
-                sx={{
-                  borderColor: colorTokens.workspace.border,
-                  color: colorTokens.text.primary,
-                  fontWeight: 600,
-                  textTransform: "none",
-                  "&:hover": { borderColor: colorTokens.primary.main, backgroundColor: "#F0F9FF" },
-                }}
-              >
-                Export Workbook
-              </Button>
-
-              <Button
-                variant="outlined"
-                startIcon={<FileUploadOutlinedIcon />}
-                onClick={() => setIsExcelModalOpen(true)}
-                sx={{
-                  borderColor: colorTokens.workspace.border,
-                  color: colorTokens.text.primary,
-                  fontWeight: 600,
-                  textTransform: "none",
-                  "&:hover": { borderColor: colorTokens.primary.main, backgroundColor: "#F0F9FF" },
-                }}
-              >
-                Excel Synchronizer
-              </Button>
-
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={() => {
-                  setEditingAction(null);
-                  setIsActionModalOpen(true);
-                }}
-                sx={{
-                  backgroundColor: colorTokens.primary.main,
-                  fontWeight: 600,
-                  textTransform: "none",
-                  boxShadow: "0 2px 8px rgba(2, 132, 199, 0.25)",
-                  "&:hover": { backgroundColor: colorTokens.primary.dark },
-                }}
-              >
-                Create Task
-              </Button>
-            </>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => {
+                setEditingAction(null);
+                setIsActionModalOpen(true);
+              }}
+              sx={{
+                backgroundColor: colorTokens.primary.main,
+                fontWeight: 700,
+                fontSize: "0.92rem",
+                textTransform: "none",
+                px: 2.75,
+                py: 1,
+                borderRadius: radiusTokens.md,
+                boxShadow: "0 2px 10px rgba(2, 132, 199, 0.3)",
+                "&:hover": { backgroundColor: colorTokens.primary.dark },
+              }}
+            >
+              Create Task
+            </Button>
           )}
 
           {effectiveMode === "audit" && (
-            <>
-              <Button
-                variant="outlined"
-                startIcon={<CloudDownloadOutlinedIcon />}
-                onClick={async () => {
-                  try {
-                    await governanceService.downloadWeeklyTemplate();
-                    showToast("Downloaded weekly update template.", "success");
-                  } catch (e) {
-                    showToast("Failed to download template.", "error");
-                  }
-                }}
-                sx={{
-                  borderColor: colorTokens.workspace.border,
-                  color: colorTokens.text.primary,
-                  fontWeight: 600,
-                  textTransform: "none",
-                  "&:hover": { borderColor: colorTokens.primary.main, backgroundColor: "#F0F9FF" },
-                }}
-              >
-                Download Weekly Template
-              </Button>
-
-              <Button
-                variant="contained"
-                startIcon={<CloudUploadOutlinedIcon />}
-                onClick={() => setIsWeeklyExcelModalOpen(true)}
-                sx={{
-                  backgroundColor: colorTokens.primary.main,
-                  fontWeight: 600,
-                  textTransform: "none",
-                  boxShadow: "0 2px 8px rgba(2, 132, 199, 0.25)",
-                  "&:hover": { backgroundColor: colorTokens.primary.dark },
-                }}
-              >
-                Upload Weekly Updates (Excel)
-              </Button>
-            </>
+            <Button
+              variant="contained"
+              startIcon={<CloudUploadOutlinedIcon />}
+              onClick={() => setIsWeeklyExcelModalOpen(true)}
+              sx={{
+                backgroundColor: colorTokens.primary.main,
+                fontWeight: 700,
+                fontSize: "0.92rem",
+                textTransform: "none",
+                px: 2.75,
+                py: 1,
+                borderRadius: radiusTokens.md,
+                boxShadow: "0 2px 10px rgba(2, 132, 199, 0.3)",
+                "&:hover": { backgroundColor: colorTokens.primary.dark },
+              }}
+            >
+              Upload Weekly Updates (Excel)
+            </Button>
           )}
 
           {effectiveMode === "documents" && (
@@ -578,15 +532,150 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
               }}
               sx={{
                 backgroundColor: colorTokens.primary.main,
-                fontWeight: 600,
+                fontWeight: 700,
+                fontSize: "0.92rem",
                 textTransform: "none",
-                boxShadow: "0 2px 8px rgba(2, 132, 199, 0.25)",
+                px: 2.75,
+                py: 1,
+                borderRadius: radiusTokens.md,
+                boxShadow: "0 2px 10px rgba(2, 132, 199, 0.3)",
                 "&:hover": { backgroundColor: colorTokens.primary.dark },
               }}
             >
               Upload Proof / Evidence
             </Button>
           )}
+        </Box>
+
+        {/* Subtitle */}
+        <Typography
+          variant="body1"
+          sx={{
+            color: "#475569",
+            fontSize: "0.95rem",
+            fontWeight: 500,
+            lineHeight: 1.5,
+            mt: 0.5,
+            mb: 2,
+          }}
+        >
+          {effectiveMode === "governance" &&
+            "Task creation across organization hierarchy, creator dashboard, live risk metrics, and detailed task analysis."}
+          {effectiveMode === "audit" &&
+            "Assigned task execution, week-wise progress reporting, blocker tracking, and revision history."}
+          {effectiveMode === "documents" &&
+            "Task-linked proof submission (images & PDFs), authorized review decisions, rework feedback, and document history."}
+        </Typography>
+
+        {/* Row 2: Secondary Toolstrip (Period Controls & Workbook Tools) */}
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 1.5,
+            p: 1.25,
+            bgcolor: "#F8FAFC",
+            borderRadius: radiusTokens.md,
+            border: `1px solid ${colorTokens.workspace.border}`,
+          }}
+        >
+          {/* Left: Period Navigation & Refresh */}
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+            {effectiveMode === "governance" && (
+              <GovernancePeriodControl
+                currentReportingWeek={metricsData?.reporting_week}
+                asOfDate={metricsData?.as_of_date}
+                selectedWeek={filters.reporting_week}
+                availableWeeks={metricsData?.available_weeks || metadata?.available_weeks || []}
+                onChangePeriod={handlePeriodChange}
+              />
+            )}
+
+            <Tooltip title="Refresh Data" arrow>
+              <IconButton onClick={handleRefresh} size="small" sx={{ border: "1px solid #E2E8F0", bgcolor: "#FFFFFF" }}>
+                <RefreshIcon sx={{ fontSize: 18, color: colorTokens.text.secondary }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+
+          {/* Right: Export & Sync Tools */}
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+            {effectiveMode === "governance" && (
+              <>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<CloudDownloadOutlinedIcon />}
+                  onClick={async () => {
+                    try {
+                      await governanceService.exportGovernanceWorkbook(filters);
+                      showToast("Governance & Action Tracking workbook exported successfully.");
+                    } catch {
+                      showToast("Failed to export workbook.", "error");
+                    }
+                  }}
+                  sx={{
+                    borderColor: colorTokens.workspace.border,
+                    bgcolor: "#FFFFFF",
+                    color: colorTokens.text.primary,
+                    fontWeight: 600,
+                    textTransform: "none",
+                    fontSize: "0.82rem",
+                    "&:hover": { borderColor: colorTokens.primary.main, backgroundColor: "#F0F9FF" },
+                  }}
+                >
+                  Export Workbook
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<FileUploadOutlinedIcon />}
+                  onClick={() => setIsExcelModalOpen(true)}
+                  sx={{
+                    borderColor: colorTokens.workspace.border,
+                    bgcolor: "#FFFFFF",
+                    color: colorTokens.text.primary,
+                    fontWeight: 600,
+                    textTransform: "none",
+                    fontSize: "0.82rem",
+                    "&:hover": { borderColor: colorTokens.primary.main, backgroundColor: "#F0F9FF" },
+                  }}
+                >
+                  Excel Synchronizer
+                </Button>
+              </>
+            )}
+
+            {effectiveMode === "audit" && (
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<CloudDownloadOutlinedIcon />}
+                onClick={async () => {
+                  try {
+                    await governanceService.downloadWeeklyTemplate();
+                    showToast("Downloaded weekly update template.", "success");
+                  } catch (e) {
+                    showToast("Failed to download template.", "error");
+                  }
+                }}
+                sx={{
+                  borderColor: colorTokens.workspace.border,
+                  bgcolor: "#FFFFFF",
+                  color: colorTokens.text.primary,
+                  fontWeight: 600,
+                  textTransform: "none",
+                  fontSize: "0.82rem",
+                  "&:hover": { borderColor: colorTokens.primary.main, backgroundColor: "#F0F9FF" },
+                }}
+              >
+                Download Weekly Template
+              </Button>
+            )}
+          </Box>
         </Box>
       </Box>
 

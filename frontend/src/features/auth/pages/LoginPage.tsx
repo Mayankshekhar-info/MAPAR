@@ -228,50 +228,6 @@ export const LoginPage: React.FC = () => {
               </Typography>
             </Box>
 
-            {/* Subtle Vertical Divider */}
-            <Box
-              sx={{
-                display: { xs: "none", md: "block" },
-                width: 1,
-                height: 40,
-                bgcolor: "#E2E8F0",
-                mx: 1.5,
-              }}
-            />
-          </Box>
-
-          {/* Right Side / Center: Prominent Governance Headline */}
-          <Box
-            sx={{
-              display: { xs: "none", md: "flex" },
-              flexDirection: "column",
-              flex: 1,
-              maxWidth: 760,
-            }}
-          >
-            <Typography
-              variant="subtitle1"
-              sx={{
-                fontWeight: 900,
-                color: "#0F172A",
-                letterSpacing: "0.5px",
-                fontSize: "0.95rem",
-                lineHeight: 1.25,
-              }}
-            >
-              PRATAP AND GROUPS MANAGEMENT SYSTEM
-            </Typography>
-            <Typography
-              variant="caption"
-              sx={{
-                color: "#64748B",
-                fontSize: "0.76rem",
-                lineHeight: 1.4,
-                mt: 0.25,
-              }}
-            >
-              Unified operational framework enabling cross-hierarchy accountability, milestone velocity, and audit-ready verification.
-            </Typography>
           </Box>
 
           {/* Far Right: Live Status Pill & Login Trigger */}

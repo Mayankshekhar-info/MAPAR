@@ -103,7 +103,7 @@ export const GovernanceMetricsBar: React.FC<GovernanceMetricsBarProps> = ({
     },
     {
       id: "wip",
-      label: "Work in Progress",
+      label: "In Progress",
       value: wipCount,
       subtitle: "active work",
       icon: <PlayCircleOutlineOutlinedIcon sx={{ fontSize: 20, color: "#D97706" }} />,
@@ -163,7 +163,7 @@ export const GovernanceMetricsBar: React.FC<GovernanceMetricsBarProps> = ({
     },
     {
       id: "rework_required",
-      label: "Rework Required",
+      label: "Rework Needed",
       value: reworkCount,
       subtitle: reworkCount > 0 ? "action needed" : undefined,
       icon: <UnpublishedOutlinedIcon sx={{ fontSize: 20, color: "#DC2626" }} />,
@@ -213,25 +213,26 @@ export const GovernanceMetricsBar: React.FC<GovernanceMetricsBarProps> = ({
             }}
           >
             <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
+              <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 0.5, mb: 1, minHeight: 32 }}>
                 <Typography
                   variant="caption"
                   sx={{
-                    fontWeight: 600,
+                    fontWeight: 700,
                     color: item.isActive ? colorTokens.primary.dark : colorTokens.text.secondary,
-                    lineHeight: 1.15,
-                    fontSize: "0.72rem",
-                    whiteSpace: "nowrap",
+                    lineHeight: 1.2,
+                    fontSize: "0.75rem",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
                     overflow: "hidden",
-                    textOverflow: "ellipsis",
                   }}
                 >
                   {item.label}
                 </Typography>
                 <Box
                   sx={{
-                    width: 28,
-                    height: 28,
+                    width: 26,
+                    height: 26,
                     borderRadius: "6px",
                     display: "flex",
                     alignItems: "center",
@@ -243,19 +244,19 @@ export const GovernanceMetricsBar: React.FC<GovernanceMetricsBarProps> = ({
                   {item.icon}
                 </Box>
               </Box>
-              <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", mt: 0.25 }}>
+              <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", mt: 0.5 }}>
                 <Typography
                   variant="h6"
                   sx={{
-                    fontWeight: 700,
+                    fontWeight: 800,
                     color:
                       item.id === "rework_required" && item.value > 0
                         ? "#DC2626"
                         : item.id === "overdue" && item.value > 0
                         ? colorTokens.status.error.main
                         : colorTokens.text.primary,
-                    fontSize: "1.35rem",
-                    lineHeight: 1.1,
+                    fontSize: "1.45rem",
+                    lineHeight: 1,
                   }}
                 >
                   {item.value}

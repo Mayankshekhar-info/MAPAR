@@ -287,7 +287,7 @@ export const GovernanceActionModal: React.FC<GovernanceActionModalProps> = ({
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <AccountTreeIcon sx={{ color: colorTokens.primary.main }} />
           <Typography variant="h6" sx={{ fontWeight: 700, color: colorTokens.text.primary }}>
-            {isEdit ? `Edit Task — ${action?.action_id}` : "Create Governance and Action Task"}
+            {isEdit ? `Edit Task — ${action?.action_id}` : "Create Governance & Action Task"}
           </Typography>
         </Box>
         <Typography variant="caption" sx={{ color: colorTokens.text.secondary }}>
