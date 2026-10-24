@@ -186,9 +186,10 @@ export const GovernanceMetricsBar: React.FC<GovernanceMetricsBarProps> = ({
         gridTemplateColumns: {
           xs: "repeat(2, 1fr)",
           sm: "repeat(4, 1fr)",
-          md: "repeat(8, 1fr)",
+          md: "repeat(4, 1fr)",
+          lg: "repeat(8, 1fr)",
         },
-        gap: 1.25,
+        gap: 1.5,
         mb: 3,
       }}
     >
@@ -198,29 +199,36 @@ export const GovernanceMetricsBar: React.FC<GovernanceMetricsBarProps> = ({
             key={item.id}
             onClick={item.onClick}
             sx={{
-              borderRadius: radiusTokens.md,
-              border: "1px solid",
-              borderColor: item.isActive ? colorTokens.primary.main : colorTokens.workspace.border,
-              boxShadow: item.isActive ? "0 0 0 2px rgba(2, 132, 199, 0.25)" : "none",
-              backgroundColor: item.isActive ? "#F0F9FF" : colorTokens.workspace.surface,
+              borderRadius: "12px",
+              border: "1.5px solid",
+              borderColor: item.isActive ? colorTokens.primary.main : "#E2E8F0",
+              boxShadow: item.isActive
+                ? "0 0 0 3px rgba(2, 132, 199, 0.2), 0 4px 12px rgba(2, 132, 199, 0.08)"
+                : "0 1px 3px rgba(0, 0, 0, 0.04)",
+              backgroundColor: item.isActive ? "#F0F9FF" : "#FFFFFF",
               cursor: "pointer",
-              transition: "all 0.18s ease-in-out",
+              transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+              minHeight: 100,
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
               "&:hover": {
-                transform: "translateY(-2px)",
+                transform: "translateY(-3px)",
                 borderColor: colorTokens.primary.light,
-                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.05)",
+                boxShadow: "0 6px 16px rgba(0, 0, 0, 0.08)",
               },
             }}
           >
-            <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
-              <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 0.5, mb: 1, minHeight: 32 }}>
+            <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
+              <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 0.75, mb: 1.25, minHeight: 34 }}>
                 <Typography
                   variant="caption"
                   sx={{
-                    fontWeight: 700,
-                    color: item.isActive ? colorTokens.primary.dark : colorTokens.text.secondary,
+                    fontWeight: 800,
+                    color: item.isActive ? colorTokens.primary.dark : "#334155",
                     lineHeight: 1.2,
-                    fontSize: "0.75rem",
+                    fontSize: "0.82rem",
+                    letterSpacing: "-0.01em",
                     display: "-webkit-box",
                     WebkitLineClamp: 2,
                     WebkitBoxOrient: "vertical",
@@ -231,13 +239,14 @@ export const GovernanceMetricsBar: React.FC<GovernanceMetricsBarProps> = ({
                 </Typography>
                 <Box
                   sx={{
-                    width: 26,
-                    height: 26,
-                    borderRadius: "6px",
+                    width: 32,
+                    height: 32,
+                    borderRadius: "8px",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     backgroundColor: item.bgColor,
+                    border: `1px solid ${item.borderColor}`,
                     flexShrink: 0,
                   }}
                 >
@@ -246,17 +255,18 @@ export const GovernanceMetricsBar: React.FC<GovernanceMetricsBarProps> = ({
               </Box>
               <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", mt: 0.5 }}>
                 <Typography
-                  variant="h6"
+                  variant="h5"
                   sx={{
-                    fontWeight: 800,
+                    fontWeight: 900,
                     color:
                       item.id === "rework_required" && item.value > 0
                         ? "#DC2626"
                         : item.id === "overdue" && item.value > 0
                         ? colorTokens.status.error.main
-                        : colorTokens.text.primary,
-                    fontSize: "1.45rem",
+                        : "#0F172A",
+                    fontSize: "1.75rem",
                     lineHeight: 1,
+                    letterSpacing: "-0.02em",
                   }}
                 >
                   {item.value}
@@ -265,9 +275,9 @@ export const GovernanceMetricsBar: React.FC<GovernanceMetricsBarProps> = ({
                   <Typography
                     variant="caption"
                     sx={{
-                      fontSize: "0.68rem",
-                      fontWeight: 500,
-                      color: item.id === "overdue" && overdueCount > 0 ? "#DC2626" : colorTokens.text.muted,
+                      fontSize: "0.72rem",
+                      fontWeight: 600,
+                      color: item.id === "overdue" && overdueCount > 0 ? "#DC2626" : "#64748B",
                       whiteSpace: "nowrap",
                     }}
                   >

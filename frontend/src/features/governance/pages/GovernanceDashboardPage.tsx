@@ -403,38 +403,38 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.75, flexWrap: "wrap" }}>
             <Box
               sx={{
-                width: 46,
-                height: 46,
-                borderRadius: "12px",
+                width: 52,
+                height: 52,
+                borderRadius: "14px",
                 bgcolor: "#EFF6FF",
-                border: "1px solid #BFDBFE",
+                border: "1.5px solid #BFDBFE",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 color: colorTokens.primary.main,
-                boxShadow: "0 2px 6px rgba(2, 132, 199, 0.15)",
+                boxShadow: "0 4px 14px rgba(2, 132, 199, 0.18)",
                 flexShrink: 0,
               }}
             >
               {effectiveMode === "governance" && (
-                <SecurityIcon sx={{ fontSize: 28 }} />
+                <SecurityIcon sx={{ fontSize: 32 }} />
               )}
               {effectiveMode === "audit" && (
-                <AssignmentTurnedInOutlinedIcon sx={{ fontSize: 28 }} />
+                <AssignmentTurnedInOutlinedIcon sx={{ fontSize: 32 }} />
               )}
               {effectiveMode === "documents" && (
-                <FolderSharedOutlinedIcon sx={{ fontSize: 28 }} />
+                <FolderSharedOutlinedIcon sx={{ fontSize: 32 }} />
               )}
             </Box>
 
             <Typography
-              variant="h4"
+              variant="h3"
               sx={{
                 fontWeight: 900,
                 color: "#0F172A",
-                letterSpacing: "-0.03em",
-                fontSize: { xs: "1.5rem", sm: "1.75rem", md: "1.95rem" },
-                lineHeight: 1.2,
+                letterSpacing: "-0.035em",
+                fontSize: { xs: "1.85rem", sm: "2.15rem", md: "2.45rem" },
+                lineHeight: 1.15,
               }}
             >
               {effectiveMode === "governance" && "Governance & Action Tracker"}
@@ -449,12 +449,12 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
                 sx={{
                   backgroundColor: "#F0F9FF",
                   color: "#0369A1",
-                  fontWeight: 700,
-                  fontSize: "0.82rem",
-                  height: 30,
-                  px: 0.5,
-                  border: "1px solid #BAE6FD",
-                  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.04)",
+                  fontWeight: 750,
+                  fontSize: "0.88rem",
+                  height: 34,
+                  px: 1,
+                  border: "1.5px solid #BAE6FD",
+                  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
                 }}
               />
             )}
@@ -466,11 +466,11 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
                   backgroundColor: metricsData.on_track_score >= 70 ? "#ECFDF5" : "#FFFBEB",
                   color: metricsData.on_track_score >= 70 ? "#047857" : "#B45309",
                   fontWeight: 800,
-                  fontSize: "0.82rem",
-                  height: 30,
-                  px: 0.5,
-                  border: `1px solid ${metricsData.on_track_score >= 70 ? "#A7F3D0" : "#FDE68A"}`,
-                  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.04)",
+                  fontSize: "0.88rem",
+                  height: 34,
+                  px: 1,
+                  border: `1.5px solid ${metricsData.on_track_score >= 70 ? "#A7F3D0" : "#FDE68A"}`,
+                  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
                 }}
               />
             )}
@@ -480,24 +480,25 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
           {effectiveMode === "governance" && (
             <Button
               variant="contained"
-              startIcon={<AddIcon />}
+              startIcon={<AddIcon sx={{ fontSize: "1.25rem !important" }} />}
               onClick={() => {
                 setEditingAction(null);
                 setIsActionModalOpen(true);
               }}
               sx={{
                 backgroundColor: colorTokens.primary.main,
-                fontWeight: 700,
-                fontSize: "0.92rem",
+                fontWeight: 800,
+                fontSize: "1rem",
                 textTransform: "none",
-                px: 2.75,
-                py: 1,
+                px: 3.25,
+                py: 1.15,
+                height: 46,
                 borderRadius: radiusTokens.md,
-                boxShadow: "0 2px 10px rgba(2, 132, 199, 0.3)",
+                boxShadow: "0 3px 12px rgba(2, 132, 199, 0.35)",
                 "&:hover": { backgroundColor: colorTokens.primary.dark },
               }}
             >
-              Create Task
+              + Create Task
             </Button>
           )}
 
