@@ -22,7 +22,7 @@ class User(AbstractUser):
         SUSPENDED = "SUSPENDED", "Suspended"
         EXPIRED = "EXPIRED", "Expired"
 
-    role = models.CharField(max_length=30, choices=Role.choices, default=Role.VIEWER)
+    role = models.CharField(max_length=100, choices=Role.choices, default=Role.VIEWER)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE, db_index=True)
     employee_id = models.CharField(max_length=50, blank=True, null=True)
     department = models.CharField(max_length=100, blank=True)

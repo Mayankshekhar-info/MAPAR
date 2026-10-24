@@ -35,7 +35,7 @@ services:
       redis:
         condition: service_started
     ports:
-      - "0.0.0.0:8003:8000"
+      - "127.0.0.1:8017:8000"
 
   celery:
     build:
@@ -56,7 +56,7 @@ services:
       context: .
       dockerfile: infrastructure/docker/frontend.Dockerfile
     ports:
-      - "0.0.0.0:8004:80"
+      - "127.0.0.1:8016:80"
     depends_on:
       - backend
 

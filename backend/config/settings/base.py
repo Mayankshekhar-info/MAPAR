@@ -38,6 +38,16 @@ DEBUG = os.environ.get("DEBUG", "False").lower() in ("true", "1", "yes")
 
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
+ENV_CSRF_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "")
+if ENV_CSRF_ORIGINS:
+    CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in ENV_CSRF_ORIGINS.split(",") if origin.strip()]
+else:
+    # Safe fallback default for local dev env
+    CSRF_TRUSTED_ORIGINS = ["http://localhost:8004", "http://127.0.0.1:8004"]
+
+# 2. Hardcode the proxy headers so Django trusts Nginx's secure HTTPS routing
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 INSTALLED_APPS = [
     "django.contrib.admin",

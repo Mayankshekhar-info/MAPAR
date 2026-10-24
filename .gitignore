@@ -43,3 +43,7 @@ Thumbs.db
 *.sql
 *.dump
 *.backup
+
+#devops
+docker-compose.yml
+infrastructure/
