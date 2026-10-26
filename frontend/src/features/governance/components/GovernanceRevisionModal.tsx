@@ -88,7 +88,7 @@ export const GovernanceRevisionModal: React.FC<GovernanceRevisionModalProps> = (
             Revise Target Closure Date
           </Typography>
           <Typography variant="caption" sx={{ color: colorTokens.text.muted }}>
-            Action ID: {action.action_id} — {action.action_point.slice(0, 50)}...
+            Action ID: {action.action_id} — {(action.action_point || "").slice(0, 50)}...
           </Typography>
         </DialogTitle>
 

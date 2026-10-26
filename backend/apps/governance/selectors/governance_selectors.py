@@ -63,9 +63,10 @@ def get_available_reporting_weeks(user: User) -> List[str]:
     )
 
     all_weeks = action_weeks.union(update_weeks)
-    # Include current calendar reporting week so users can select it
-    current_cal_week = f"Week {timezone.localdate().isocalendar()[1]}"
-    all_weeks.add(current_cal_week)
+    # If no recorded weeks exist yet in database, fall back to current calendar week
+    if not all_weeks:
+        current_cal_week = f"Week {timezone.localdate().isocalendar()[1]}"
+        all_weeks.add(current_cal_week)
     return sort_reporting_weeks_desc(list(all_weeks))
 
 
@@ -74,7 +75,7 @@ def apply_governance_scope(queryset, user):
     Applies role-based and organization-hierarchy scoped access to governance actions.
     - Super Admin / Unrestricted Corporate: View all actions across enterprise.
     - Scoped roles (e.g. CBH, Circle Validator, Data Entry, Viewer): View actions belonging to authorized Circle(s).
-    - Action Owner: View actions assigned to them (owner=user) or within their authorized scope.
+    - Action Owner / Creator / Assigner: View actions assigned to them or created/assigned by them.
     """
     if not user or not user.is_authenticated:
         return queryset.none()
@@ -87,20 +88,22 @@ def apply_governance_scope(queryset, user):
     if scope.is_unrestricted:
         return queryset
 
+    user_accessible_q = Q(owner=user) | Q(created_by=user) | Q(assigned_by=user)
+
     role = getattr(user, "role", None)
     if role == User.Role.ACTION_OWNER:
         if scope.circle_ids:
-            return queryset.filter(Q(circle_id__in=scope.circle_ids) | Q(owner=user))
-        return queryset.filter(owner=user)
+            return queryset.filter(Q(circle_id__in=scope.circle_ids) | user_accessible_q)
+        return queryset.filter(user_accessible_q)
 
     if scope.circle_ids is not None:
-        return queryset.filter(Q(circle_id__in=scope.circle_ids) | Q(owner=user))
+        return queryset.filter(Q(circle_id__in=scope.circle_ids) | user_accessible_q)
 
     user_circle_id = getattr(user, "circle_id", None)
     if user_circle_id:
-        return queryset.filter(Q(circle_id=user_circle_id) | Q(owner=user))
+        return queryset.filter(Q(circle_id=user_circle_id) | user_accessible_q)
 
-    return queryset.filter(owner=user)
+    return queryset.filter(user_accessible_q)
 
 
 def get_governance_actions(filters: Dict[str, Any], user: User):
@@ -145,12 +148,18 @@ def get_governance_actions(filters: Dict[str, Any], user: User):
             Q(action_id__icontains=search)
             | Q(action_point__icontains=search)
             | Q(key_deliverable__icontains=search)
+            | Q(bucket__icontains=search)
             | Q(owner__first_name__icontains=search)
             | Q(owner__last_name__icontains=search)
             | Q(owner__username__icontains=search)
             | Q(owner_name_override__icontains=search)
             | Q(last_update__icontains=search)
         )
+
+    # Bucket filter (classification bucket)
+    bucket = filters.get("bucket")
+    if bucket and bucket != "ALL":
+        qs = qs.filter(bucket__iexact=bucket)
 
     # Circle filter
     circle_id = filters.get("circle_id")
@@ -182,24 +191,59 @@ def get_governance_actions(filters: Dict[str, Any], user: User):
     if owner_id:
         qs = qs.filter(owner_id=owner_id)
 
-    # Escalated filter
+    # Escalated filter (workbook rule: active action with ageing > 30 days)
     is_escalated = filters.get("is_escalated")
     if is_escalated is not None:
         if isinstance(is_escalated, str):
             is_escalated = is_escalated.lower() in ("true", "1", "yes")
-        qs = qs.filter(is_escalated=is_escalated)
+        today = timezone.localdate()
+        d30_ago = today - timedelta(days=30)
+        if is_escalated:
+            qs = qs.filter(
+                status__in=[GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP],
+                raised_date__lt=d30_ago,
+            )
+        else:
+            qs = qs.filter(
+                Q(status=GovernanceActionPoint.Status.CLOSED) | Q(raised_date__gte=d30_ago)
+            )
 
-    # Overdue filter
+    # Overdue filter (dynamic check: active action with current_target_date < today)
     is_overdue = filters.get("is_overdue")
     if is_overdue is not None:
         if isinstance(is_overdue, str):
             is_overdue = is_overdue.lower() in ("true", "1", "yes")
-        qs = qs.filter(is_overdue=is_overdue)
+        today = timezone.localdate()
+        if is_overdue:
+            qs = qs.filter(
+                status__in=[GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP],
+                current_target_date__lt=today,
+            )
+        else:
+            qs = qs.filter(
+                Q(status=GovernanceActionPoint.Status.CLOSED)
+                | Q(current_target_date__gte=today)
+                | Q(current_target_date__isnull=True)
+            )
 
-    # Ageing bucket filter
+    # Ageing bucket filter (dynamic against immutable raised_date for active actions)
     ageing_bucket = filters.get("ageing_bucket")
     if ageing_bucket and ageing_bucket != "ALL":
-        qs = qs.filter(ageing_bucket=ageing_bucket)
+        today = timezone.localdate()
+        d7_ago = today - timedelta(days=7)
+        d15_ago = today - timedelta(days=15)
+        d30_ago = today - timedelta(days=30)
+        qs = qs.filter(status__in=[GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP])
+        if ageing_bucket == "0-7 Days":
+            qs = qs.filter(raised_date__gte=d7_ago)
+        elif ageing_bucket == "8-15 Days":
+            qs = qs.filter(raised_date__gte=d15_ago, raised_date__lt=d7_ago)
+        elif ageing_bucket == "16-30 Days":
+            qs = qs.filter(raised_date__gte=d30_ago, raised_date__lt=d15_ago)
+        elif ageing_bucket == "30+ Days":
+            qs = qs.filter(raised_date__lt=d30_ago)
+        else:
+            qs = qs.filter(ageing_bucket=ageing_bucket)
 
     # Due soon filter (active actions due within next 7 days)
     is_due_soon = filters.get("is_due_soon")
@@ -381,7 +425,14 @@ def get_governance_summary_metrics(
         priority=GovernanceActionPoint.Priority.HIGH,
     ).count()
 
-    escalated_count = qs.filter(is_escalated=True).count()
+    d30_ago = today - timedelta(days=30)
+    d15_ago = today - timedelta(days=15)
+    d7_ago = today - timedelta(days=7)
+
+    escalated_count = qs.filter(
+        status__in=[GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP],
+        raised_date__lt=d30_ago,
+    ).count()
 
     upcoming_count = qs.filter(
         status__in=[GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP],
@@ -395,13 +446,13 @@ def get_governance_summary_metrics(
     rework_evidence_count = qs.filter(evidence_status=GovernanceActionPoint.EvidenceStatus.REWORK_REQUIRED).count()
     not_submitted_evidence_count = qs.filter(evidence_status=GovernanceActionPoint.EvidenceStatus.NOT_SUBMITTED).count()
 
-    # Ageing buckets breakdown for open/wip items
+    # Ageing buckets breakdown for open/wip items (dynamic against raised_date)
     open_wip_qs = qs.filter(status__in=[GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP])
     bucket_counts = {
-        "0-7 Days": open_wip_qs.filter(ageing_bucket="0-7 Days").count(),
-        "8-15 Days": open_wip_qs.filter(ageing_bucket="8-15 Days").count(),
-        "16-30 Days": open_wip_qs.filter(ageing_bucket="16-30 Days").count(),
-        "30+ Days": open_wip_qs.filter(ageing_bucket="30+ Days").count(),
+        "0-7 Days": open_wip_qs.filter(raised_date__gte=d7_ago).count(),
+        "8-15 Days": open_wip_qs.filter(raised_date__gte=d15_ago, raised_date__lt=d7_ago).count(),
+        "16-30 Days": open_wip_qs.filter(raised_date__gte=d30_ago, raised_date__lt=d15_ago).count(),
+        "30+ Days": open_wip_qs.filter(raised_date__lt=d30_ago).count(),
     }
 
     # Status breakdown
@@ -478,8 +529,20 @@ def get_governance_summary_metrics(
             open=Count("id", filter=Q(status=GovernanceActionPoint.Status.OPEN)),
             wip=Count("id", filter=Q(status=GovernanceActionPoint.Status.WIP)),
             closed=Count("id", filter=Q(status=GovernanceActionPoint.Status.CLOSED)),
-            overdue=Count("id", filter=Q(is_overdue=True)),
-            escalated=Count("id", filter=Q(is_escalated=True)),
+            overdue=Count(
+                "id",
+                filter=Q(
+                    status__in=[GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP],
+                    current_target_date__lt=today,
+                ),
+            ),
+            escalated=Count(
+                "id",
+                filter=Q(
+                    status__in=[GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP],
+                    raised_date__lt=d30_ago,
+                ),
+            ),
         )
         .order_by("-total")[:25]
     )
@@ -560,7 +623,7 @@ def get_governance_summary_metrics(
             else:
                 s["open_on_track"] += 1
 
-        if act.is_escalated:
+        if act.status in [GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP] and (today - act.raised_date).days > 30:
             s["escalated"] += 1
         if act.evidence_status == GovernanceActionPoint.EvidenceStatus.PENDING_REVIEW:
             s["evidence_pending"] += 1
@@ -582,7 +645,10 @@ def get_governance_summary_metrics(
     my_open = my_qs.filter(status=GovernanceActionPoint.Status.OPEN).count()
     my_wip = my_qs.filter(status=GovernanceActionPoint.Status.WIP).count()
     my_closed = my_qs.filter(status=GovernanceActionPoint.Status.CLOSED).count()
-    my_overdue = my_qs.filter(is_overdue=True).count()
+    my_overdue = my_qs.filter(
+        status__in=[GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP],
+        current_target_date__lt=today,
+    ).count()
     my_upcoming = my_qs.filter(
         status__in=[GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP],
         current_target_date__gte=today,
@@ -619,15 +685,12 @@ def get_governance_summary_metrics(
     overall_completion_rate = round((closed_count / total_actions * 100), 1) if total_actions > 0 else 0.0
     closed_qs = qs.filter(status=GovernanceActionPoint.Status.CLOSED)
     from django.db.models import F
-    on_time_closed = closed_qs.filter(
-        Q(actual_closure_date__isnull=False, current_target_date__isnull=False, actual_closure_date__lte=F("current_target_date")) |
-        Q(actual_closure_date__isnull=True)
-    ).count()
     delayed_closed = closed_qs.filter(
         actual_closure_date__isnull=False,
         current_target_date__isnull=False,
-        actual_closure_date__gt=F("current_target_date")
+        actual_closure_date__gt=F("current_target_date"),
     ).count()
+    on_time_closed = max(0, closed_count - delayed_closed)
 
     closure_performance = {
         "on_time_closed": on_time_closed,
@@ -641,7 +704,7 @@ def get_governance_summary_metrics(
     active_actions = list(
         open_wip_qs.filter(current_target_date__isnull=False)
         .select_related("circle", "owner")
-        .values("id", "action_id", "action_point", "current_target_date", "priority", "status", "circle__name", "owner__first_name", "owner__last_name", "owner__username")
+        .values("id", "action_id", "action_point", "bucket", "current_target_date", "priority", "status", "circle__name", "owner__first_name", "owner__last_name", "owner__username")
     )
 
     timeline_points = []
@@ -652,6 +715,7 @@ def get_governance_summary_metrics(
                 "id": a["id"],
                 "action_id": a["action_id"],
                 "title": a["action_point"],
+                "bucket": a.get("bucket") or "",
                 "owner": f"{a.get('owner__first_name') or ''} {a.get('owner__last_name') or ''}".strip() or a.get("owner__username") or "Unassigned",
                 "circle": a.get("circle__name") or "",
                 "priority": a["priority"],
@@ -679,6 +743,7 @@ def get_governance_summary_metrics(
             "id": act.id,
             "action_id": act.action_id,
             "action_point": act.action_point,
+            "bucket": act.bucket or "",
             "owner_name": o_name,
             "circle_name": act.circle.name if act.circle else "",
             "circle_code": act.circle.code if act.circle else "",
@@ -757,7 +822,7 @@ def get_task_weekly_updates(action_point_id: int, user: User):
         return None
 
     from apps.governance.models import GovernanceWeeklyUpdate
-    return GovernanceWeeklyUpdate.objects.filter(action_point=action_point).select_related("submitted_by").order_by("reporting_week", "submitted_at")
+    return GovernanceWeeklyUpdate.objects.filter(action_point=action_point).select_related("submitted_by").order_by("submitted_at", "id")
 
 
 def get_task_full_detail(action_point_id: int, user: User) -> Optional[Dict[str, Any]]:
@@ -775,15 +840,17 @@ def get_task_full_detail(action_point_id: int, user: User) -> Optional[Dict[str,
     if not action:
         return None
 
-    # Weekly updates
-    weekly_updates = list(action.weekly_updates.select_related("submitted_by").order_by("reporting_week", "submitted_at"))
+    # Weekly updates in chronological sequence
+    weekly_updates = list(action.weekly_updates.select_related("submitted_by").order_by("submitted_at", "id"))
 
     # Progress trend series
     progress_trend = []
     for wu in weekly_updates:
         progress_trend.append({
             "reporting_week": wu.reporting_week,
+            "revision_number": wu.revision_number,
             "progress_percent": wu.progress_percent,
+            "previous_progress_percent": wu.previous_progress_percent,
             "status": wu.status,
             "submitted_at": wu.submitted_at.isoformat() if wu.submitted_at else None,
         })
@@ -998,6 +1065,12 @@ def get_governance_metadata(user: User):
             {"code": "DEPARTMENT", "label": "Department"},
             {"code": "SUB_DEPARTMENT", "label": "Sub Department"},
         ],
+        "buckets": list(
+            GovernanceActionPoint.objects.exclude(bucket="")
+            .values_list("bucket", flat=True)
+            .distinct()
+            .order_by("bucket")
+        ),
         "available_weeks": get_available_reporting_weeks(user),
     }
 

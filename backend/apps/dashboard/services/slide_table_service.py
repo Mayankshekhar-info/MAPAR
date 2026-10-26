@@ -435,21 +435,22 @@ class SlideTableService:
                     from apps.imports.models import ImportBatch
                     batch = (
                         ImportBatch.objects.filter(batch_id=batch_id_str)
-                        .select_related("template", "template_version", "uploaded_by")
+                        .select_related("template_version__template", "uploaded_by")
                         .first()
                     )
                     if batch:
+                        tmpl = batch.template_version.template if batch.template_version else None
                         upload_provenance = {
                             "batch_id": batch.batch_id,
-                            "template_name": batch.template.name if batch.template else "Standard Template",
-                            "template_code": batch.template.code if batch.template else "",
+                            "template_name": tmpl.name if tmpl else "Standard Template",
+                            "template_code": tmpl.code if tmpl else "",
                             "version": batch.template_version.version_number if batch.template_version else 1,
                             "original_filename": batch.original_filename,
                             "uploaded_by": batch.uploaded_by.username if batch.uploaded_by else "System",
-                            "uploaded_at": batch.uploaded_at.isoformat() if batch.uploaded_at else None,
+                            "uploaded_at": batch.created_at.isoformat() if batch.created_at else None,
                             "status": batch.status,
                             "total_rows": batch.total_rows,
-                            "imported_rows": batch.imported_rows,
+                            "imported_rows": batch.valid_rows,
                         }
                 except Exception:
                     upload_provenance = None

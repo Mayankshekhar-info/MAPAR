@@ -8,6 +8,11 @@ PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.MD5PasswordHasher",
 ]
 
+import tempfile
+from pathlib import Path
+
+MEDIA_ROOT = Path(tempfile.gettempdir()) / "mapar_test_media"
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",

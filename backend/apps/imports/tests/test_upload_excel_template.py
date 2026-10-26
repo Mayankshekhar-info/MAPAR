@@ -5,6 +5,7 @@ zero dummy data, zero instruction sheets, and full compatibility with Uploads mo
 """
 
 import io
+from typing import Any
 from openpyxl import Workbook, load_workbook
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -47,7 +48,8 @@ REQUIRED_COLUMNS = [
 
 class UploadExcelTemplateTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(
+        user_mgr: Any = User.objects
+        self.user = user_mgr.create_user(
             username="template_tester",
             email="tester@mapar.internal",
             password="testpassword123",
@@ -86,6 +88,8 @@ class UploadExcelTemplateTests(TestCase):
         self.assertNotIn("Column Guide & Instructions", wb.sheetnames)
 
         ws = wb.active
+        self.assertIsNotNone(ws)
+        assert ws is not None
         # 2. Exactly 1 header row (no sample rows, no dummy data)
         self.assertEqual(ws.max_row, 1, "Template must only have header row (max_row == 1), no sample rows.")
 
@@ -117,6 +121,8 @@ class UploadExcelTemplateTests(TestCase):
         wb = load_workbook(filename=io.BytesIO(response.content), data_only=True)
         self.assertEqual(len(wb.sheetnames), 1)
         ws = wb.active
+        self.assertIsNotNone(ws)
+        assert ws is not None
         self.assertEqual(ws.max_row, 1)
         self.assertEqual(ws.max_column, 20)
 
@@ -131,6 +137,8 @@ class UploadExcelTemplateTests(TestCase):
         # Create workbook with the 20 headers and 1 sample row
         wb = Workbook()
         ws = wb.active
+        self.assertIsNotNone(ws)
+        assert ws is not None
         ws.title = "Sheet1"
         ws.append(REQUIRED_COLUMNS)
         ws.append([
@@ -203,7 +211,7 @@ class UploadExcelTemplateTests(TestCase):
         self.assertEqual(updated.columns.count(), 2)
 
         # Test API endpoint
-        res = self.client.put(
+        res: Any = self.client.put(
             f"/api/v1/uploads/templates/{template.id}/versions/{version1.id}/",
             {
                 "changelog": "API Edited",

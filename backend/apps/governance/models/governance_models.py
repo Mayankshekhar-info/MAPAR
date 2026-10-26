@@ -1,8 +1,30 @@
 import math
+from datetime import date, datetime
+from typing import Any, Optional
 from django.db import models
 from django.utils import timezone
 from apps.organization.models import Circle, Domain, Department, SubDepartment, MainCompany, SubCompany, Project
 from apps.identity.models import User
+
+
+def _parse_date_value(val: Any) -> Optional[date]:
+    if not val:
+        return None
+    if isinstance(val, datetime):
+        return val.date()
+    if isinstance(val, date):
+        return val
+    if isinstance(val, str):
+        val_str = val.strip()
+        if not val_str:
+            return None
+        clean_str = val_str.split("T")[0].split(" ")[0].strip()
+        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d"):
+            try:
+                return datetime.strptime(clean_str, fmt).date()
+            except ValueError:
+                continue
+    return None
 
 
 class GovernanceActionPoint(models.Model):
@@ -91,6 +113,13 @@ class GovernanceActionPoint(models.Model):
         default="Operations",
         db_index=True,
         help_text="Function or area (SCM, Operations, Sales, Finance, HR, IT/Systems, Compliance/Legal, Other)",
+    )
+    bucket = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Classification bucket or category from Excel upload or task assignment",
     )
     action_point = models.TextField(help_text="Concise description of the action point")
     key_deliverable = models.TextField(
@@ -245,6 +274,19 @@ class GovernanceActionPoint(models.Model):
         - Overdue: True if Status != 'Closed' and current_target_date < reference_date
         """
         today = reference_date or timezone.localdate()
+        if isinstance(today, str):
+            today = _parse_date_value(today) or timezone.localdate()
+
+        if self.actual_closure_date:
+            self.actual_closure_date = _parse_date_value(self.actual_closure_date)
+        if self.raised_date:
+            self.raised_date = _parse_date_value(self.raised_date) or timezone.localdate()
+        else:
+            self.raised_date = timezone.localdate()
+        if self.current_target_date:
+            self.current_target_date = _parse_date_value(self.current_target_date)
+        if self.target_closure_date:
+            self.target_closure_date = _parse_date_value(self.target_closure_date)
 
         if self.status == self.Status.CLOSED and self.actual_closure_date:
             days = (self.actual_closure_date - self.raised_date).days
@@ -343,6 +385,21 @@ class GovernanceWeeklyUpdate(models.Model):
     )
     actual_closure_date = models.DateField(null=True, blank=True, help_text="Date when task was completed if finished this week")
     remarks = models.TextField(blank=True, default="", help_text="Optional remarks or notes")
+    previous_progress_percent = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Previous progress percentage before this update",
+    )
+    previous_status = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="Previous task status before this update",
+    )
+    update_sequence = models.PositiveIntegerField(
+        default=1,
+        help_text="Monotonically increasing update sequence number for this task",
+    )
     submitted_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -357,13 +414,15 @@ class GovernanceWeeklyUpdate(models.Model):
     class Meta:
         app_label = "governance"
         db_table = "governance_weekly_update"
-        ordering = ["-reporting_week", "-submitted_at"]
-        unique_together = ("action_point", "reporting_week")
+        ordering = ["-submitted_at", "-id"]
         verbose_name = "Weekly Progress Update"
         verbose_name_plural = "Weekly Progress Updates"
+        indexes = [
+            models.Index(fields=["action_point", "reporting_week", "submitted_at"]),
+        ]
 
     def __str__(self):
-        return f"{self.action_point.action_id} [{self.reporting_week}]: {self.progress_percent}%"
+        return f"{self.action_point.action_id} [{self.reporting_week} #{self.revision_number}]: {self.progress_percent}%"
 
 
 class GovernanceEvidence(models.Model):

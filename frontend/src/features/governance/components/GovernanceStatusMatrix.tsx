@@ -264,7 +264,10 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
                       {/* Open Cell */}
                       <TableCell align="center">
                         <Box
-                          onClick={() => onCellClick({ circle_id: circle.circle__id, status: "Open" })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCellClick({ circle_id: circle.circle__id, status: "Open" });
+                          }}
                           sx={{
                             cursor: "pointer",
                             py: 0.25,
@@ -282,7 +285,10 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
                       {/* In Progress Cell */}
                       <TableCell align="center">
                         <Box
-                          onClick={() => onCellClick({ circle_id: circle.circle__id, status: "WIP" })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCellClick({ circle_id: circle.circle__id, status: "WIP" });
+                          }}
                           sx={{
                             cursor: "pointer",
                             py: 0.25,
@@ -300,7 +306,10 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
                       {/* Closed Cell */}
                       <TableCell align="center">
                         <Box
-                          onClick={() => onCellClick({ circle_id: circle.circle__id, status: "Closed" })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCellClick({ circle_id: circle.circle__id, status: "Closed" });
+                          }}
                           sx={{
                             cursor: "pointer",
                             py: 0.25,
@@ -318,7 +327,10 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
                       {/* Overdue Cell */}
                       <TableCell align="center">
                         <Box
-                          onClick={() => onCellClick({ circle_id: circle.circle__id, is_overdue: true })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCellClick({ circle_id: circle.circle__id, is_overdue: true });
+                          }}
                           sx={{
                             cursor: "pointer",
                             display: "inline-flex",
@@ -348,7 +360,10 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
                       {/* Total Cell */}
                       <TableCell align="center">
                         <Box
-                          onClick={() => onCellClick({ circle_id: circle.circle__id })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCellClick({ circle_id: circle.circle__id });
+                          }}
                           sx={{
                             cursor: "pointer",
                             fontWeight: 800,
@@ -426,7 +441,10 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
                       {/* Open Cell */}
                       <TableCell align="center">
                         <Box
-                          onClick={() => onCellClick({ owner_id: owner.owner_id, status: "Open" })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCellClick({ owner_id: owner.owner_id, status: "Open" });
+                          }}
                           sx={{
                             cursor: "pointer",
                             py: 0.25,
@@ -444,7 +462,10 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
                       {/* In Progress Cell */}
                       <TableCell align="center">
                         <Box
-                          onClick={() => onCellClick({ owner_id: owner.owner_id, status: "WIP" })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCellClick({ owner_id: owner.owner_id, status: "WIP" });
+                          }}
                           sx={{
                             cursor: "pointer",
                             py: 0.25,
@@ -462,7 +483,10 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
                       {/* Closed Cell */}
                       <TableCell align="center">
                         <Box
-                          onClick={() => onCellClick({ owner_id: owner.owner_id, status: "Closed" })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCellClick({ owner_id: owner.owner_id, status: "Closed" });
+                          }}
                           sx={{
                             cursor: "pointer",
                             py: 0.25,
@@ -480,7 +504,10 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
                       {/* Overdue Cell */}
                       <TableCell align="center">
                         <Box
-                          onClick={() => onCellClick({ owner_id: owner.owner_id, is_overdue: true })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCellClick({ owner_id: owner.owner_id, is_overdue: true });
+                          }}
                           sx={{
                             cursor: "pointer",
                             display: "inline-flex",
@@ -510,7 +537,10 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
                       {/* Total Cell */}
                       <TableCell align="center">
                         <Box
-                          onClick={() => onCellClick({ owner_id: owner.owner_id })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onCellClick({ owner_id: owner.owner_id });
+                          }}
                           sx={{
                             cursor: "pointer",
                             fontWeight: 800,

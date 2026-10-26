@@ -37,3 +37,31 @@ export interface AuthState {
   setLoading: (loading: boolean) => void;
   clearAuth: () => void;
 }
+
+export interface PasswordResetRequestPayload {
+  identifier: string;
+}
+
+export interface PasswordResetVerifyPayload {
+  identifier: string;
+  otp_code: string;
+}
+
+export interface PasswordResetConfirmPayload {
+  reset_token: string;
+  new_password: string;
+  confirm_password: string;
+}
+
+export interface ChangePasswordPayload {
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
+}
+
+export interface PasswordResetResponse {
+  success: boolean;
+  detail: string;
+  reset_token?: string;
+  debug_otp?: string;
+}

@@ -1,9 +1,12 @@
+from typing import Any
 from django.db import models
 from django.conf import settings
 from .template import UploadTemplate
 
 
 class UploadTemplateVersion(models.Model):
+    columns: Any
+    batches: Any
     """
     Immutable template version representing a specific point-in-time schema definition.
     Preserves historical integrity for previously imported batches.

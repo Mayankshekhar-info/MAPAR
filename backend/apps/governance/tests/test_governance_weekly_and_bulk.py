@@ -123,33 +123,23 @@ def test_weekly_update_submission_and_duplicate_prevention(weekly_bulk_setup):
     assert action1.current_progress_percent == 35
     assert "2026-W42" in action1.last_update
 
-    # 2. Duplicate submission without allow_revision should fail with 400
+    # 2. Subsequent submission in same week should succeed as separate entry (revision #2)
     dup_resp = client.post(
         f"/api/v1/governance/actions/{action1.id}/weekly-updates/",
         {
             "reporting_week": "2026-W42",
-            "work_completed": "Attempting duplicate entry.",
-            "progress_percent": 40,
-        },
-        format="json",
-    )
-    assert dup_resp.status_code == 400
-    assert "already exists" in str(dup_resp.data)
-
-    # 3. Revision with allow_revision=True should succeed
-    rev_resp = client.post(
-        f"/api/v1/governance/actions/{action1.id}/weekly-updates/",
-        {
-            "reporting_week": "2026-W42",
-            "work_completed": "Revised: Completed Block A and started Block B early.",
+            "work_completed": "Second update in same week: Completed Block A and started Block B early.",
             "progress_percent": 50,
-            "allow_revision": True,
         },
         format="json",
     )
-    assert rev_resp.status_code == 201
-    assert rev_resp.data["weekly_update"]["progress_percent"] == 50
-    assert rev_resp.data["weekly_update"]["revision_number"] == 2
+    assert dup_resp.status_code == 201
+    assert dup_resp.data["weekly_update"]["progress_percent"] == 50
+    assert dup_resp.data["weekly_update"]["revision_number"] == 2
+    assert dup_resp.data["weekly_update"]["previous_progress_percent"] == 35
+
+    # Check both updates exist separately
+    assert GovernanceWeeklyUpdate.objects.filter(action_point=action1).count() == 2
 
     action1.refresh_from_db()
     assert action1.current_progress_percent == 50
@@ -272,6 +262,7 @@ def test_weekly_template_download(weekly_bulk_setup):
     import io
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
     ws = wb.active
+    assert ws is not None
     # First row headers
     assert ws.cell(row=1, column=1).value == "Task ID"
     assert ws.cell(row=1, column=5).value == "Work Completed"
@@ -312,6 +303,7 @@ def test_weekly_excel_upload_and_strict_access_control(weekly_bulk_setup):
     # Build Excel with 2 rows: 1 authorized (ACT-00501), 1 unauthorized (ACT-00999)
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
     headers = [
         "Task ID", "Task Title", "Week Start", "Week End", "Work Completed",
         "Progress %", "Status", "Blockers", "Next Week Plan", "Actual Closure", "Remarks"

@@ -119,3 +119,158 @@ class LogoutView(APIView):
     def post(self, request):
         logout(request)
         return Response({"success": True, "detail": "Logged out successfully"}, status=status.HTTP_200_OK)
+
+
+class PasswordResetRequestView(APIView):
+    """
+    POST /api/v1/auth/password-reset/request/
+    Accepts identifier (username/email/employee_id), generates single-use OTP, and dispatches via SMTP.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        from .serializers import PasswordResetRequestSerializer
+        from apps.identity.services.password_reset_service import PasswordResetService
+
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": "Validation error", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        identifier = serializer.validated_data["identifier"]
+        ip_addr = request.META.get("REMOTE_ADDR")
+
+        success, detail_msg, debug_otp = PasswordResetService.request_password_reset(
+            identifier=identifier,
+            ip_address=ip_addr,
+        )
+
+        resp_data = {"success": success, "detail": detail_msg}
+        if debug_otp:
+            resp_data["debug_otp"] = debug_otp
+
+        if not success:
+            return Response(resp_data, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        return Response(resp_data, status=status.HTTP_200_OK)
+
+
+class PasswordResetVerifyView(APIView):
+    """
+    POST /api/v1/auth/password-reset/verify/
+    Verifies 6-digit OTP code and returns single-use reset token upon success.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        from .serializers import PasswordResetVerifySerializer
+        from apps.identity.services.password_reset_service import PasswordResetService
+
+        serializer = PasswordResetVerifySerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": "Validation error", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        identifier = serializer.validated_data["identifier"]
+        otp_code = serializer.validated_data["otp_code"]
+
+        success, detail_msg, reset_token = PasswordResetService.verify_otp(
+            identifier=identifier,
+            otp_code=otp_code,
+        )
+
+        if not success:
+            return Response(
+                {"success": False, "detail": detail_msg},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response({
+            "success": True,
+            "detail": detail_msg,
+            "reset_token": reset_token,
+        }, status=status.HTTP_200_OK)
+
+
+class PasswordResetConfirmView(APIView):
+    """
+    POST /api/v1/auth/password-reset/confirm/
+    Updates user password with verified reset token, clears lockouts, and terminates active sessions.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        from .serializers import PasswordResetConfirmSerializer
+        from apps.identity.services.password_reset_service import PasswordResetService
+
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": "Validation error", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        reset_token = serializer.validated_data["reset_token"]
+        new_password = serializer.validated_data["new_password"]
+
+        success, detail_msg = PasswordResetService.confirm_password_reset(
+            reset_token=reset_token,
+            new_password=new_password,
+        )
+
+        if not success:
+            return Response(
+                {"success": False, "detail": detail_msg},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response({
+            "success": True,
+            "detail": detail_msg,
+        }, status=status.HTTP_200_OK)
+
+
+class ChangePasswordView(APIView):
+    """
+    POST /api/v1/auth/change-password/
+    Allows authenticated users to change their password by validating their current password.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .serializers import ChangePasswordSerializer
+        from apps.identity.services.password_reset_service import PasswordResetService
+
+        serializer = ChangePasswordSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": "Validation error", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        current_password = serializer.validated_data["current_password"]
+        new_password = serializer.validated_data["new_password"]
+
+        success, detail_msg = PasswordResetService.change_password_authenticated(
+            user=request.user,
+            current_password=current_password,
+            new_password=new_password,
+        )
+
+        if not success:
+            return Response(
+                {"success": False, "detail": detail_msg},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response({
+            "success": True,
+            "detail": detail_msg,
+        }, status=status.HTTP_200_OK)

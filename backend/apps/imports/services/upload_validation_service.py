@@ -625,7 +625,7 @@ class UploadValidationService:
                     )
                 elif start_date or reporting_date:
                     ref_d = start_date or reporting_date
-                    parsed_d = datetime.date.fromisoformat(str(ref_d).strip()) if isinstance(ref_d, str) else ref_d
+                    parsed_d = datetime.date.fromisoformat(ref_d.strip()) if isinstance(ref_d, str) else ref_d
                     w_start, w_end = PeriodResolutionService.get_week_bounds(parsed_d)
                     resolved_period = PeriodResolutionService.resolve_period(
                         period_type=PeriodResolutionService.WEEKLY,
@@ -636,7 +636,7 @@ class UploadValidationService:
             elif period_type == "MONTHLY":
                 ref_d = reporting_date or start_date
                 if ref_d:
-                    parsed_d = datetime.date.fromisoformat(str(ref_d).strip()) if isinstance(ref_d, str) else ref_d
+                    parsed_d = datetime.date.fromisoformat(ref_d.strip()) if isinstance(ref_d, str) else ref_d
                     m_start, m_end = PeriodResolutionService.get_month_bounds(parsed_d.year, parsed_d.month)
                     resolved_period = PeriodResolutionService.resolve_period(
                         period_type=PeriodResolutionService.MONTHLY,
@@ -799,13 +799,30 @@ class UploadValidationService:
                     "missing_columns": list(set(missing_cols)),
                 }
                 batch.save(update_fields=["applied_kpi", "kpi_execution_status", "kpi_result_summary"])
+            elif not batch.reporting_period:
+                batch.kpi_execution_status = "NO_PERIOD"
+                batch.kpi_result_summary = {
+                    "status": "NO_PERIOD",
+                    "kpi_id": target_kpi.id,
+                    "kpi_code": target_kpi.code,
+                    "kpi_name": target_kpi.name,
+                    "message": "Cannot calculate KPI: batch has no resolved reporting period.",
+                }
+                batch.save(update_fields=["applied_kpi", "kpi_execution_status", "kpi_result_summary"])
             else:
                 batch.kpi_execution_status = "PROCESSING"
                 batch.save(update_fields=["applied_kpi", "kpi_execution_status"])
                 try:
                     from apps.kpi.services.kpi_engine_service import KPIEngineService
                     target_lvl = target_kpi.hierarchy_level or ("CIRCLE" if final_circle_id else "MAIN_COMPANY")
-                    target_nid = target_kpi.hierarchy_id or (final_circle_id if target_lvl == "CIRCLE" else (final_company_id or 1))
+                    if target_kpi.hierarchy_id is not None:
+                        target_nid = target_kpi.hierarchy_id
+                    elif target_lvl == "CIRCLE" and final_circle_id is not None:
+                        target_nid = final_circle_id
+                    elif final_company_id is not None:
+                        target_nid = final_company_id
+                    else:
+                        target_nid = 1
                     calc_res = KPIEngineService.calculate_kpi(
                         kpi=target_kpi,
                         period=batch.reporting_period,

@@ -246,3 +246,140 @@ def test_my_evidence_and_secure_download(evidence_test_setup):
     unauth_client.force_authenticate(user=evidence_test_setup["unauthorized"])
     unauth_res = unauth_client.get(f"/api/v1/governance/evidence/{evidence.id}/download/")
     assert unauth_res.status_code in [403, 404]
+
+
+@pytest.mark.django_db
+def test_evidence_centralized_storage_path_traversal_sanitization(evidence_test_setup):
+    """
+    Verifies that filenames with path traversal characters or unsafe paths are strictly sanitized,
+    and the file is persisted in centralized storage.
+    """
+    owner_client = APIClient()
+    owner_client.force_authenticate(user=evidence_test_setup["owner"])
+    action = evidence_test_setup["action"]
+
+    # File with traversal path in name
+    malicious_file = SimpleUploadedFile(
+        "../../traversal_audit.pdf",
+        b"secure audit bytes",
+        content_type="application/pdf",
+    )
+    res = owner_client.post(
+        f"/api/v1/governance/actions/{action.id}/evidence/",
+        {"file": malicious_file, "title": "Traversal Test"},
+        format="multipart",
+    )
+    assert res.status_code == 201
+    ev_data = res.json()["evidence"]
+    assert ".." not in ev_data["file_name"]
+    assert ev_data["file_name"] == "traversal_audit.pdf"
+
+    # Confirm record exists in DB and file exists in centralized storage
+    ev_record = GovernanceEvidence.objects.get(id=ev_data["id"])
+    assert ev_record.file.storage.exists(ev_record.file.name)
+
+
+@pytest.mark.django_db
+def test_evidence_empty_file_rejected(evidence_test_setup):
+    """
+    Verifies that zero-byte files are rejected with a clear validation error.
+    """
+    owner_client = APIClient()
+    owner_client.force_authenticate(user=evidence_test_setup["owner"])
+    action = evidence_test_setup["action"]
+
+    empty_file = SimpleUploadedFile("empty.pdf", b"", content_type="application/pdf")
+    res = owner_client.post(
+        f"/api/v1/governance/actions/{action.id}/evidence/",
+        {"file": empty_file, "title": "Empty File"},
+        format="multipart",
+    )
+    assert res.status_code == 400
+    errors = str(res.json()["errors"]).lower()
+    assert "empty" in errors or "0 bytes" in errors
+
+
+@pytest.mark.django_db
+def test_evidence_inline_preview_and_safe_disposition(evidence_test_setup):
+    """
+    Verifies that downloading with ?inline=1 sets Content-Disposition: inline for browser preview,
+    and sanitizes headers.
+    """
+    owner_client = APIClient()
+    owner_client.force_authenticate(user=evidence_test_setup["owner"])
+    action = evidence_test_setup["action"]
+
+    file_obj = SimpleUploadedFile("preview_doc.pdf", b"preview content", content_type="application/pdf")
+    res = owner_client.post(
+        f"/api/v1/governance/actions/{action.id}/evidence/",
+        {"file": file_obj, "title": "Preview Document"},
+        format="multipart",
+    )
+    assert res.status_code == 201
+    ev_id = res.json()["evidence"]["id"]
+
+    # Request with inline=1
+    dl_res = owner_client.get(f"/api/v1/governance/evidence/{ev_id}/download/?inline=1")
+    assert dl_res.status_code == 200
+    assert "inline" in dl_res["Content-Disposition"]
+    assert "preview_doc.pdf" in dl_res["Content-Disposition"]
+
+
+@pytest.mark.django_db
+def test_evidence_safe_deletion_and_storage_cleanup(evidence_test_setup):
+    """
+    Verifies that deleting an evidence document via API or service cleans up
+    both the database record and the centralized storage file.
+    """
+    admin_client = APIClient()
+    admin_client.force_authenticate(user=evidence_test_setup["admin"])
+    action = evidence_test_setup["action"]
+
+    # Upload evidence
+    file_obj = SimpleUploadedFile("to_delete.pdf", b"temporary bytes", content_type="application/pdf")
+    res = admin_client.post(
+        f"/api/v1/governance/actions/{action.id}/evidence/",
+        {"file": file_obj, "title": "Delete Target"},
+        format="multipart",
+    )
+    assert res.status_code == 201
+    ev_id = res.json()["evidence"]["id"]
+    ev_record = GovernanceEvidence.objects.get(id=ev_id)
+    storage_path = ev_record.file.name
+    assert ev_record.file.storage.exists(storage_path)
+
+    # Delete as admin
+    del_res = admin_client.delete(f"/api/v1/governance/evidence/{ev_id}/download/")
+    assert del_res.status_code == 200
+    assert not GovernanceEvidence.objects.filter(id=ev_id).exists()
+    assert not ev_record.file.storage.exists(storage_path)
+
+
+@pytest.mark.django_db
+def test_evidence_integrity_management_command(evidence_test_setup):
+    """
+    Verifies that the verify_evidence_integrity management command accurately detects valid records.
+    """
+    from django.core.management import call_command
+    from io import StringIO
+
+    action = evidence_test_setup["action"]
+    file_mock = SimpleUploadedFile("integrity_test.pdf", b"integrity content", content_type="application/pdf")
+    GovernanceEvidence.objects.create(
+        action_point=action,
+        version=1,
+        title="Integrity Item",
+        file=file_mock,
+        file_name="integrity_test.pdf",
+        file_size=len(b"integrity content"),
+        submitted_by=evidence_test_setup["owner"],
+        status="Pending Review",
+    )
+
+    out = StringIO()
+    call_command("verify_evidence_integrity", stdout=out)
+    output = out.getvalue()
+    assert "Total Evidence Records in DB: 1" in output
+    assert "Valid & Confirmed Files in Storage: 1" in output
+    assert "Zero broken evidence database references found!" in output
+

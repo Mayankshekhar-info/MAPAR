@@ -1,3 +1,4 @@
+import os
 import mimetypes
 from django.http import HttpResponse, FileResponse, Http404
 from rest_framework import status
@@ -6,8 +7,10 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.core.paginator import Paginator
 
+from apps.identity.models import User
 from apps.governance.models import (
     GovernanceActionPoint,
     GovernanceEvidence,
@@ -76,6 +79,7 @@ class GovernanceActionPointListView(APIView):
             "ageing_bucket": request.query_params.get("ageing_bucket"),
             "is_due_soon": request.query_params.get("is_due_soon"),
             "reporting_week": request.query_params.get("reporting_week"),
+            "bucket": request.query_params.get("bucket"),
             "start_date": request.query_params.get("start_date"),
             "end_date": request.query_params.get("end_date"),
             "hierarchy_level": request.query_params.get("hierarchy_level"),
@@ -118,6 +122,7 @@ class GovernanceActionPointListView(APIView):
                 "department_id": request.data.get("department_id"),
                 "sub_department_id": request.data.get("sub_department_id"),
                 "function_area": validated_data.get("function_area", "Operations"),
+                "bucket": validated_data.get("bucket") or request.data.get("bucket", ""),
                 "action_point": validated_data["action_point"],
                 "key_deliverable": validated_data.get("key_deliverable", ""),
                 "owner_id": validated_data["owner"].id if validated_data.get("owner") else None,
@@ -194,6 +199,10 @@ class GovernanceActionPointDetailView(APIView):
                 update_data["raised_date"] = vd["raised_date"]
             if "owner_name_override" in vd:
                 update_data["owner_name_override"] = vd["owner_name_override"]
+            if "bucket" in vd:
+                update_data["bucket"] = vd["bucket"]
+            elif "bucket" in request.data:
+                update_data["bucket"] = request.data["bucket"]
             if "evidence_required" in request.data:
                 update_data["evidence_required"] = request.data["evidence_required"]
 
@@ -220,6 +229,7 @@ class GovernanceEvidenceUploadView(APIView):
     Returns full evidence submission history for the action point.
     """
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def _get_action(self, action_id, user):
         qs = apply_governance_scope(GovernanceActionPoint.objects.all(), user)
@@ -236,12 +246,13 @@ class GovernanceEvidenceUploadView(APIView):
 
     def post(self, request, pk):
         action = self._get_action(pk, request.user)
-        uploaded_file = request.FILES.get("file")
+        uploaded_file = request.FILES.get("file") or request.data.get("file")
         if not uploaded_file:
             return Response({"success": False, "errors": {"file": "An evidence file is required."}}, status=status.HTTP_400_BAD_REQUEST)
 
         title = request.data.get("title", "")
         description = request.data.get("description", "")
+        reporting_week = request.data.get("reporting_week", "")
 
         try:
             evidence = GovernanceEvidenceService.submit_evidence(
@@ -250,6 +261,7 @@ class GovernanceEvidenceUploadView(APIView):
                 title=title,
                 description=description,
                 user=request.user,
+                reporting_week=reporting_week,
             )
             serializer = GovernanceEvidenceSerializer(evidence)
             return Response({
@@ -298,29 +310,71 @@ class GovernanceEvidenceReviewView(APIView):
 
 class GovernanceEvidenceDownloadView(APIView):
     """
-    GET /api/v1/governance/evidence/<id>/download/
-    Secure file streaming for authorized users only.
+    GET    /api/v1/governance/evidence/<id>/download/
+           Secure file streaming/preview for authorized users only.
+    DELETE /api/v1/governance/evidence/<id>/download/
+           Controlled deletion of evidence record and centralized storage file (Super Admin/Management).
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-        evidence = GovernanceEvidence.objects.select_related("action_point").filter(id=pk).first()
-        if not evidence or not evidence.file:
-            raise Http404("Evidence file not found.")
+        evidence = GovernanceEvidence.objects.select_related("action_point", "action_point__circle").filter(id=pk).first()
+        if not evidence or not evidence.file or not evidence.file.name:
+            raise Http404("Evidence record or file reference not found.")
 
-        # Scope validation: user must have access to action point
-        qs = apply_governance_scope(GovernanceActionPoint.objects.all(), request.user)
-        if not qs.filter(id=evidence.action_point_id).exists():
-            raise PermissionDenied("You do not have permission to access this evidence file.")
+        # Centralized storage verification: ensure file physically exists in storage provider
+        if not evidence.file.storage.exists(evidence.file.name):
+            raise Http404(f"Evidence file '{evidence.file_name}' could not be located in centralized storage.")
+
+        # Scoped authorization check:
+        user = request.user
+        is_super = (
+            user.is_superuser
+            or getattr(user, "is_superadmin", False)
+            or user.role in [User.Role.SUPER_ADMIN, User.Role.MANAGEMENT]
+        )
+        is_uploader = (evidence.submitted_by_id == user.id)
+        action = evidence.action_point
+        is_task_actor = (
+            action.owner_id == user.id
+            or action.created_by_id == user.id
+            or action.assigned_by_id == user.id
+        )
+        qs = apply_governance_scope(GovernanceActionPoint.objects.all(), user)
+        in_scope = qs.filter(id=action.id).exists()
+
+        if not (is_super or is_uploader or is_task_actor or in_scope):
+            raise PermissionDenied("You do not have permission to access or download this evidence file.")
 
         try:
             file_handle = evidence.file.open("rb")
             content_type, _ = mimetypes.guess_type(evidence.file_name)
-            response = FileResponse(file_handle, content_type=content_type or "application/octet-stream")
-            response["Content-Disposition"] = f'attachment; filename="{evidence.file_name}"'
+            if not content_type:
+                content_type = evidence.file_type or "application/octet-stream"
+
+            is_inline = request.query_params.get("inline") in ["1", "true", "True"]
+            disposition = "inline" if is_inline else "attachment"
+            safe_name = os.path.basename(evidence.file_name)
+
+            response = FileResponse(file_handle, content_type=content_type)
+            response["Content-Disposition"] = f'{disposition}; filename="{safe_name}"'
             return response
         except Exception as e:
-            raise Http404(f"Error reading file: {str(e)}")
+            raise Http404(f"Error streaming evidence file from centralized storage: {str(e)}")
+
+    def delete(self, request, pk):
+        evidence = GovernanceEvidence.objects.select_related("action_point").filter(id=pk).first()
+        if not evidence:
+            return Response({"success": False, "errors": "Evidence record not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            GovernanceEvidenceService.delete_evidence(evidence, request.user)
+            return Response({
+                "success": True,
+                "message": f"Evidence record #{pk} and storage file deleted successfully.",
+            })
+        except PermissionDenied as e:
+            return Response({"success": False, "errors": str(e)}, status=status.HTTP_403_FORBIDDEN)
 
 
 class GovernanceMyEvidenceListView(APIView):
@@ -607,6 +661,7 @@ class GovernanceExcelUploadView(APIView):
     Uploads and validates completed Excel sheet, saves valid records, returns row errors.
     """
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def post(self, request):
         file_obj = request.FILES.get("file")
@@ -836,6 +891,7 @@ class GovernanceWeeklyExcelPreviewView(APIView):
     Enforces strict task-level access control against the authenticated user.
     """
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def post(self, request):
         file_obj = request.FILES.get("file")
@@ -862,6 +918,7 @@ class GovernanceWeeklyExcelUploadView(APIView):
     and returns comprehensive breakdown of successful and failed rows.
     """
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def post(self, request):
         file_obj = request.FILES.get("file")
@@ -904,5 +961,60 @@ class GovernanceWeeklyErrorReportExportView(APIView):
         )
         response["Content-Disposition"] = 'attachment; filename="Weekly_Updates_Error_Report.xlsx"'
         return response
+
+
+class GovernanceActionSendEmailView(APIView):
+    """
+    POST /api/v1/governance/actions/<id>/send-email/
+    Triggers an on-demand urgent follow-up alert email to the task owner or any selected application user.
+    Enforces organization-scoped authorization, recipient resolution, and audit logging.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        qs = apply_governance_scope(GovernanceActionPoint.objects.all(), request.user)
+        action = qs.filter(id=pk).first()
+        if not action:
+            return Response(
+                {"success": False, "message": "Action point not found or outside authorized scope."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        recipient_user_id = request.data.get("recipient_user_id") or request.data.get("recipient_id")
+        recipient_user = None
+        if recipient_user_id:
+            try:
+                recipient_user_id = int(recipient_user_id)
+                recipient_user = User.objects.filter(id=recipient_user_id, is_active=True).first()
+                if not recipient_user:
+                    return Response(
+                        {"success": False, "message": "Selected recipient user not found or inactive."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            except (ValueError, TypeError):
+                return Response(
+                    {"success": False, "message": "Invalid recipient_user_id."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        from apps.notifications.services.urgent_followup_email_service import UrgentFollowUpEmailService
+
+        success, message, record = UrgentFollowUpEmailService.send_urgent_followup_email(
+            action_point=action,
+            triggered_by=request.user,
+            recipient_user=recipient_user,
+        )
+
+        resp_status = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
+        return Response({
+            "success": success,
+            "message": message,
+            "action_id": action.action_id,
+            "recipient_email": record.recipient_email if record else "",
+            "recipient_name": record.recipient_name if record else "",
+            "delivery_status": record.status if record else "FAILED",
+        }, status=resp_status)
+
+
 
 

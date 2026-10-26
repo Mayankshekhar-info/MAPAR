@@ -26,6 +26,7 @@ export * from "./components/GovernanceActiveFiltersBar";
 export * from "./components/RequestTargetRevisionModal";
 export * from "./components/ReviewRevisionRequestDialog";
 export * from "./components/RevisionRequestsTable";
+export * from "./components/SendTaskEmailModal";
 export * from "./pages/GovernanceDashboardPage";
 export * from "./pages/TaskDetailPage";
 

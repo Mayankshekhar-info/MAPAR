@@ -921,7 +921,7 @@ def test_api_actions_and_metrics_week_filtering_and_empty_state(excel_setup):
 @pytest.mark.django_db
 def test_template_and_export_include_week_column(excel_setup):
     """
-    Verifies that generated template and export workbook contain the 'Week' column header.
+    Verifies that generated template and export workbook contain the 'Week' and 'Bucket' column headers.
     """
     # Template
     template_stream = GovernanceExcelService.generate_template()
@@ -929,7 +929,8 @@ def test_template_and_export_include_week_column(excel_setup):
     ws_template = wb_template["Open Points Tracker"]
     headers_template = [cell.value for cell in ws_template[3] if cell.value]
     assert "Week" in headers_template
-    assert headers_template[-1] == "Week"
+    assert "Bucket" in headers_template
+    assert headers_template[-1] == "Bucket"
 
     # Export
     export_stream = GovernanceExcelService.export_governance_workbook(excel_setup["admin"])
@@ -937,7 +938,122 @@ def test_template_and_export_include_week_column(excel_setup):
     ws_export = wb_export["Open Points Tracker"]
     headers_export = [cell.value for cell in ws_export[3] if cell.value]
     assert "Week" in headers_export
-    assert headers_export[-1] == "Week"
+    assert "Bucket" in headers_export
+    assert headers_export[-1] == "Bucket"
+
+
+@pytest.mark.django_db
+def test_excel_bucket_import_and_backward_compatibility(excel_setup):
+    """
+    1. Upload with Bucket column correctly maps and saves Bucket value.
+    2. Upload with older Excel file without Bucket column still succeeds gracefully.
+    3. Re-upload or edit does not erase existing Bucket value.
+    4. Ageing Bucket and Bucket remain separate and never conflict.
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Open Points Tracker"
+
+    headers = [
+        "Action ID", "Circle", "Function/Area", "Action Point", "Key Requirement / Deliverable",
+        "Owner", "Raised Date", "Target Closure Date", "Status", "Priority",
+        "Actual Closure Date", "Last Update", "Week", "Bucket"
+    ]
+    ws.append(headers)
+
+    today = timezone.localdate()
+    target = today + timedelta(days=14)
+
+    # Row 1 with Bucket "Critical Infrastructure"
+    ws.append([
+        "",
+        "RJ",
+        "Operations",
+        "Replace degraded battery banks",
+        "DC backup online",
+        "mgupta",
+        today.strftime("%Y-%m-%d"),
+        target.strftime("%Y-%m-%d"),
+        "Open",
+        "High",
+        "",
+        "Vendor selected",
+        "Week 42",
+        "Critical Infrastructure",
+    ])
+
+    # Row 2 with Bucket "Statutory Compliance"
+    ws.append([
+        "",
+        "RJ",
+        "Compliance/Legal",
+        "Renew environmental NOC certification",
+        "Approval document filed",
+        "mgupta",
+        today.strftime("%Y-%m-%d"),
+        target.strftime("%Y-%m-%d"),
+        "Open",
+        "Medium",
+        "",
+        "Application submitted",
+        "Week 42",
+        "Statutory Compliance",
+    ])
+
+    stream = io.BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+
+    res = GovernanceExcelService.import_excel(stream, excel_setup["admin"])
+    assert res["success"] is True, res.get("errors")
+    assert res["created_count"] == 2
+
+    act1 = GovernanceActionPoint.objects.get(action_point="Replace degraded battery banks")
+    assert act1.bucket == "Critical Infrastructure"
+    assert act1.ageing_bucket == "0-7 Days"  # Dynamic derived metric is separate
+
+    act2 = GovernanceActionPoint.objects.get(action_point="Renew environmental NOC certification")
+    assert act2.bucket == "Statutory Compliance"
+
+    # Backward compatibility: Upload older Excel file WITHOUT Bucket column
+    wb_old = openpyxl.Workbook()
+    ws_old = wb_old.active
+    ws_old.title = "Action Tracker"
+    old_headers = [
+        "Action ID", "Circle", "Function/Area", "Action Point", "Key Requirement / Deliverable",
+        "Owner", "Raised Date", "Target Closure Date", "Status", "Priority",
+        "Actual Closure Date", "Last Update"
+    ]
+    ws_old.append(old_headers)
+    ws_old.append([
+        act1.action_id,
+        "RJ",
+        "Operations",
+        "Replace degraded battery banks",
+        "DC backup online",
+        "mgupta",
+        today.strftime("%Y-%m-%d"),
+        target.strftime("%Y-%m-%d"),
+        "WIP",
+        "High",
+        "",
+        "Batteries delivered to site",
+    ])
+
+    stream_old = io.BytesIO()
+    wb_old.save(stream_old)
+    stream_old.seek(0)
+
+    res_old = GovernanceExcelService.import_excel(stream_old, excel_setup["admin"])
+    assert res_old["success"] is True, res_old.get("errors")
+    assert res_old["updated_count"] == 1
+
+    act1.refresh_from_db()
+    assert act1.status == "WIP"
+    assert act1.last_update == "Batteries delivered to site"
+    # Preserves saved Bucket value even when older Excel without Bucket column is uploaded
+    assert act1.bucket == "Critical Infrastructure"
+
 
 
 

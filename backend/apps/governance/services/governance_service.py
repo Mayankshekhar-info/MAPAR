@@ -61,6 +61,22 @@ class GovernanceService:
         if user_by_name:
             return user_by_name
 
+        # 5. Regex extraction for embedded emails (e.g. "Name <email@dom.com>" or "Name (email@dom.com)")
+        import re
+        email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', raw)
+        if email_match:
+            extracted_email = email_match.group(0).lower()
+            user_by_extracted = User.objects.filter(email__iexact=extracted_email, is_active=True).first()
+            if user_by_extracted:
+                return user_by_extracted
+
+        # 6. Regex extraction for embedded ID (e.g. "ID: #12" or "#12")
+        id_match = re.search(r'(?:id[:\s#]+|#)(\d+)', raw, re.IGNORECASE)
+        if id_match:
+            user_by_extracted_id = User.objects.filter(id=int(id_match.group(1)), is_active=True).first()
+            if user_by_extracted_id:
+                return user_by_extracted_id
+
         raise ValidationError({
             "owner": f"User '{raw}' not found. Please provide a valid User ID, username, or registered corporate email."
         })
@@ -126,6 +142,7 @@ class GovernanceService:
                 status=data.get("status", GovernanceActionPoint.Status.OPEN),
                 actual_closure_date=data.get("actual_closure_date"),
                 priority=data.get("priority", GovernanceActionPoint.Priority.MEDIUM),
+                bucket=str(data.get("bucket", "")).strip() if data.get("bucket") else "",
                 evidence_required=data.get("evidence_required", True),
                 last_update=data.get("last_update", "").strip(),
                 created_by=user,
@@ -220,6 +237,9 @@ class GovernanceService:
 
                 if "owner_name_override" in data:
                     action_point.owner_name_override = data["owner_name_override"]
+
+                if "bucket" in data:
+                    action_point.bucket = str(data["bucket"]).strip() if data["bucket"] is not None else ""
 
             action_point.save()
 
@@ -460,7 +480,26 @@ class GovernanceService:
                 continue
 
             try:
-                cls.update_action_point(action_point, updates, user)
+                task_updates = dict(updates)
+                target_date = task_updates.pop("target_closure_date", None)
+                if target_date:
+                    if not cls.can_review_target_revision(action_point, user):
+                        raise PermissionDenied("Only authorized governance managers can directly revise target dates in bulk.")
+                    if isinstance(target_date, str):
+                        from datetime import datetime
+                        target_date_val = datetime.strptime(target_date, "%Y-%m-%d").date()
+                    else:
+                        target_date_val = target_date
+                    if target_date_val != action_point.current_target_date:
+                        cls.revise_target_date(
+                            action_point=action_point,
+                            new_target_date=target_date_val,
+                            revised_by=user,
+                            reason="Bulk target date revision",
+                            approved_by=f"{user.get_full_name()} ({user.username})",
+                        )
+                if task_updates:
+                    cls.update_action_point(action_point, task_updates, user)
                 results.append({
                     "task_id": task_id,
                     "action_id": action_point.action_id,

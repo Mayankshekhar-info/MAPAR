@@ -27,12 +27,14 @@ from apps.governance.api.views import (
     GovernanceActionRevisionRequestListView,
     GovernanceRevisionRequestListView,
     GovernanceRevisionRequestReviewView,
+    GovernanceActionSendEmailView,
 )
 
 urlpatterns = [
     path("actions/", GovernanceActionPointListView.as_view(), name="governance-actions-list-create"),
     path("actions/bulk-update/", GovernanceActionBulkUpdateView.as_view(), name="governance-actions-bulk-update"),
     path("actions/<int:pk>/", GovernanceActionPointDetailView.as_view(), name="governance-action-detail"),
+    path("actions/<int:pk>/send-email/", GovernanceActionSendEmailView.as_view(), name="governance-action-send-email"),
     path("actions/<int:pk>/full-detail/", GovernanceActionPointFullDetailView.as_view(), name="governance-action-full-detail"),
     path("actions/<int:pk>/revise-target/", GovernanceReviseTargetView.as_view(), name="governance-revise-target"),
     path("actions/<int:pk>/revisions/", GovernanceRevisionHistoryView.as_view(), name="governance-action-revisions"),

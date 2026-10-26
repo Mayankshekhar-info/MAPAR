@@ -69,6 +69,7 @@ class GovernanceEvidenceSerializer(serializers.ModelSerializer):
     action_id = serializers.CharField(source="action_point.action_id", read_only=True)
     action_point_title = serializers.CharField(source="action_point.action_point", read_only=True)
     circle_code = serializers.CharField(source="action_point.circle.code", read_only=True)
+    bucket = serializers.CharField(source="action_point.bucket", read_only=True)
 
     class Meta:
         model = GovernanceEvidence
@@ -78,6 +79,7 @@ class GovernanceEvidenceSerializer(serializers.ModelSerializer):
             "action_id",
             "action_point_title",
             "circle_code",
+            "bucket",
             "version",
             "title",
             "description",
@@ -105,6 +107,52 @@ class GovernanceEvidenceSerializer(serializers.ModelSerializer):
         ]
 
 
+class GovernanceWeeklyUpdateSerializer(serializers.ModelSerializer):
+    submitted_by = SimpleUserSerializer(read_only=True)
+    action_id = serializers.CharField(source="action_point.action_id", read_only=True)
+    action_point_title = serializers.CharField(source="action_point.action_point", read_only=True)
+    bucket = serializers.CharField(source="action_point.bucket", read_only=True)
+
+    class Meta:
+        from apps.governance.models import GovernanceWeeklyUpdate
+        model = GovernanceWeeklyUpdate
+        fields = [
+            "id",
+            "action_point",
+            "action_id",
+            "action_point_title",
+            "bucket",
+            "reporting_week",
+            "week_start_date",
+            "week_end_date",
+            "work_completed",
+            "progress_percent",
+            "previous_progress_percent",
+            "previous_status",
+            "update_sequence",
+            "achievements",
+            "blockers",
+            "next_week_plan",
+            "status",
+            "actual_closure_date",
+            "remarks",
+            "submitted_by",
+            "submitted_at",
+            "updated_at",
+            "revision_number",
+        ]
+        read_only_fields = [
+            "id",
+            "submitted_by",
+            "submitted_at",
+            "updated_at",
+            "revision_number",
+            "previous_progress_percent",
+            "previous_status",
+            "update_sequence",
+        ]
+
+
 class GovernanceActionPointSerializer(serializers.ModelSerializer):
     circle = SimpleCircleSerializer(read_only=True)
     circle_id = serializers.PrimaryKeyRelatedField(
@@ -124,6 +172,7 @@ class GovernanceActionPointSerializer(serializers.ModelSerializer):
     created_by = SimpleUserSerializer(read_only=True)
     revisions = GovernanceTargetRevisionSerializer(many=True, read_only=True)
     evidence_items = GovernanceEvidenceSerializer(many=True, read_only=True)
+    weekly_updates = GovernanceWeeklyUpdateSerializer(many=True, read_only=True)
 
     def to_internal_value(self, data):
         data_copy = dict(data) if isinstance(data, dict) else data
@@ -150,6 +199,7 @@ class GovernanceActionPointSerializer(serializers.ModelSerializer):
             "department",
             "sub_department",
             "function_area",
+            "bucket",
             "action_point",
             "key_deliverable",
             "owner",
@@ -175,6 +225,7 @@ class GovernanceActionPointSerializer(serializers.ModelSerializer):
             "last_update",
             "revisions",
             "evidence_items",
+            "weekly_updates",
             "created_by",
             "created_at",
             "updated_at",
@@ -192,44 +243,6 @@ class GovernanceActionPointSerializer(serializers.ModelSerializer):
             "evidence_status",
             "created_at",
             "updated_at",
-        ]
-
-
-class GovernanceWeeklyUpdateSerializer(serializers.ModelSerializer):
-    submitted_by = SimpleUserSerializer(read_only=True)
-    action_id = serializers.CharField(source="action_point.action_id", read_only=True)
-    action_point_title = serializers.CharField(source="action_point.action_point", read_only=True)
-
-    class Meta:
-        from apps.governance.models import GovernanceWeeklyUpdate
-        model = GovernanceWeeklyUpdate
-        fields = [
-            "id",
-            "action_point",
-            "action_id",
-            "action_point_title",
-            "reporting_week",
-            "week_start_date",
-            "week_end_date",
-            "work_completed",
-            "progress_percent",
-            "achievements",
-            "blockers",
-            "next_week_plan",
-            "status",
-            "actual_closure_date",
-            "remarks",
-            "submitted_by",
-            "submitted_at",
-            "updated_at",
-            "revision_number",
-        ]
-        read_only_fields = [
-            "id",
-            "submitted_by",
-            "submitted_at",
-            "updated_at",
-            "revision_number",
         ]
 
 

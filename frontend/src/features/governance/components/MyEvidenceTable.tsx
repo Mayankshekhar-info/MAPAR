@@ -271,24 +271,72 @@ export const MyEvidenceTable: React.FC<MyEvidenceTableProps> = ({
                       {item.action_id}
                     </TableCell>
                     <TableCell sx={{ maxWidth: 220 }}>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          fontSize: "0.8rem",
-                          fontWeight: 500,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {item.action_point_title}
-                      </Typography>
+                      {item.bucket && (
+                        <Box sx={{ mb: 0.25 }}>
+                          <Chip
+                            label={item.bucket}
+                            size="small"
+                            sx={{
+                              height: 16,
+                              fontSize: "0.62rem",
+                              fontWeight: 600,
+                              backgroundColor: "#EFF6FF",
+                              color: "#1D4ED8",
+                              border: "1px solid #DBEAFE",
+                              borderRadius: "4px",
+                            }}
+                          />
+                        </Box>
+                      )}
+                      <Tooltip title={item.action_point_title || ""} arrow placement="top-start">
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontSize: "0.8rem",
+                            fontWeight: 500,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {item.action_point_title}
+                        </Typography>
+                      </Tooltip>
                     </TableCell>
-                    <TableCell sx={{ fontWeight: 600, fontSize: "0.8rem" }}>
-                      {item.title} <Typography component="span" variant="caption" sx={{ color: colorTokens.text.muted }}>v{item.version}</Typography>
+                    <TableCell sx={{ fontWeight: 600, fontSize: "0.8rem", maxWidth: 180 }}>
+                      <Tooltip title={item.title || ""} arrow placement="top-start">
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontSize: "0.8rem",
+                            fontWeight: 600,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {item.title}{" "}
+                          <Typography component="span" variant="caption" sx={{ color: colorTokens.text.muted }}>
+                            v{item.version}
+                          </Typography>
+                        </Typography>
+                      </Tooltip>
                     </TableCell>
-                    <TableCell sx={{ fontSize: "0.78rem", color: colorTokens.text.secondary }}>
-                      {item.file_name}
+                    <TableCell sx={{ maxWidth: 180 }}>
+                      <Tooltip title={item.file_name || ""} arrow placement="top-start">
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontSize: "0.78rem",
+                            color: colorTokens.text.secondary,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {item.file_name}
+                        </Typography>
+                      </Tooltip>
                     </TableCell>
                     <TableCell sx={{ fontSize: "0.76rem", color: colorTokens.text.muted }}>
                       {(item.file_size / 1024).toFixed(1)} KB

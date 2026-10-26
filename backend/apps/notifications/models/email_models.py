@@ -121,11 +121,21 @@ class EmailConfiguration(models.Model):
         else:
             security = os.environ.get("SMTP_SECURITY", "STARTTLS")
 
-        from_email = self.from_email or os.environ.get("SMTP_FROM_EMAIL", "notifications@mapar.co.in")
-        from_name = self.from_name or os.environ.get("SMTP_FROM_NAME", "MAPAR Governance System")
+        if self.smtp_host:
+            from_email = self.from_email
+            from_name = self.from_name
+        else:
+            from_email = os.environ.get("SMTP_FROM_EMAIL") or self.from_email or "notifications@mapar.co.in"
+            from_name = os.environ.get("SMTP_FROM_NAME") or self.from_name or "PGMS Governance System"
         is_enabled = self.is_enabled if self.smtp_host else os.environ.get("SMTP_ENABLED", "True").lower() in ("true", "1", "yes")
         frontend_url = self.frontend_base_url or os.environ.get("FRONTEND_BASE_URL", "http://localhost:5185")
         timeout = int(os.environ.get("SMTP_TIMEOUT", 15))
+
+        env_shakti_cc = os.environ.get(
+            "CC_SHAKTI_SINGH_ENABLED",
+            os.environ.get("SMTP_CC_SHAKTI_SINGH_ENABLED", "True"),
+        ).strip().lower()
+        cc_shakti_singh_enabled = env_shakti_cc not in ("false", "0", "no", "disabled", "off")
 
         return {
             "host": host.strip(),
@@ -140,6 +150,7 @@ class EmailConfiguration(models.Model):
             "cc_addresses": self.get_effective_cc_list(),
             "has_password": bool(password.strip()),
             "timeout": timeout,
+            "cc_shakti_singh_enabled": cc_shakti_singh_enabled,
         }
 
 
@@ -154,7 +165,9 @@ class EmailDeliveryRecord(models.Model):
         TASK_ASSIGNMENT = "TASK_ASSIGNMENT", "Immediate Task Assignment Alert"
         TASK_REASSIGNMENT = "TASK_REASSIGNMENT", "Task Reassignment Alert"
         TASK_REMINDER = "TASK_REMINDER", "Scheduled Weekly Reminder"
+        TASK_URGENT_FOLLOWUP = "TASK_URGENT_FOLLOWUP", "Urgent Follow-Up Task Alert"
         TEST_EMAIL = "TEST_EMAIL", "Admin Connection Test Email"
+        PASSWORD_RESET = "PASSWORD_RESET", "Password Reset OTP Verification"
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending Dispatch"
@@ -243,6 +256,14 @@ class EmailDeliveryRecord(models.Model):
         default="",
         db_index=True,
         help_text="Slot identifier for recurring reminders (e.g. 2026-W42:Friday:10:00)",
+    )
+    triggered_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="triggered_email_deliveries",
+        help_text="User who initiated this email dispatch",
     )
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)

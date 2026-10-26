@@ -1,4 +1,5 @@
 import logging
+import os
 import smtplib
 import socket
 import ssl
@@ -21,6 +22,30 @@ class SMTPService:
     Handles socket testing, credential resolution, email assembly, bounded retries,
     and audit logging to EmailDeliveryRecord without ever exposing sensitive secrets.
     """
+
+    TARGET_CC_SHAKTI_SINGH = "shakti.singh@pratap.co.in"
+
+    @classmethod
+    def is_shakti_singh_cc_enabled(cls, config: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Determines whether CC dispatch to shakti.singh@pratap.co.in is enabled.
+        Configurable via:
+          1. config dict override: config.get("cc_shakti_singh_enabled")
+          2. Environment variable: CC_SHAKTI_SINGH_ENABLED / SMTP_CC_SHAKTI_SINGH_ENABLED
+        Defaults to True (Enabled) to preserve current production behavior.
+        """
+        if config and "cc_shakti_singh_enabled" in config:
+            val = config["cc_shakti_singh_enabled"]
+            if isinstance(val, bool):
+                return val
+            if isinstance(val, str):
+                return val.strip().lower() not in ("false", "0", "no", "disabled", "off")
+
+        env_val = os.environ.get(
+            "CC_SHAKTI_SINGH_ENABLED",
+            os.environ.get("SMTP_CC_SHAKTI_SINGH_ENABLED", "True"),
+        ).strip().lower()
+        return env_val not in ("false", "0", "no", "disabled", "off")
 
     @classmethod
     def get_effective_config(cls, custom_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -190,6 +215,7 @@ If you received this message, MAPAR automatic task assignment alerts and recurri
         idempotency_key: Optional[str] = None,
         custom_config: Optional[Dict[str, Any]] = None,
         skip_cc: bool = False,
+        triggered_by: Optional[Any] = None,
     ) -> Tuple[bool, EmailDeliveryRecord]:
         """
         Sends an email via SMTP and records delivery status in EmailDeliveryRecord.
@@ -211,6 +237,13 @@ If you received this message, MAPAR automatic task assignment alerts and recurri
                     if c_clean and c_clean not in effective_cc:
                         effective_cc.append(c_clean)
 
+        # Central CC filter: Temporarily exclude shakti.singh@pratap.co.in when switch is disabled
+        if not cls.is_shakti_singh_cc_enabled(config):
+            effective_cc = [
+                c for c in effective_cc
+                if c.strip().lower() != cls.TARGET_CC_SHAKTI_SINGH.lower()
+            ]
+
         # Generate idempotency key if not provided
         if not idempotency_key:
             idempotency_key = f"{notification_type}:{effective_action_id}:{clean_recipient}:{timezone.now().strftime('%Y%m%d%H%M')}"
@@ -230,8 +263,13 @@ If you received this message, MAPAR automatic task assignment alerts and recurri
                     "body_summary": plain_text[:300],
                     "scheduled_slot": scheduled_slot,
                     "status": EmailDeliveryRecord.Status.PENDING,
+                    "triggered_by": triggered_by,
                 },
             )
+
+            if not created and triggered_by and not record.triggered_by:
+                record.triggered_by = triggered_by
+                record.save(update_fields=["triggered_by", "updated_at"])
 
             # If already successfully delivered, do not duplicate
             if not created and record.status == EmailDeliveryRecord.Status.SENT:
@@ -290,7 +328,7 @@ If you received this message, MAPAR automatic task assignment alerts and recurri
 
             with server:
                 server.ehlo()
-                if security == "STARTTLS":
+                if security == "STARTTLS" and server.has_extn("STARTTLS"):
                     ctx = ssl.create_default_context()
                     server.starttls(context=ctx)
                     server.ehlo()

@@ -221,39 +221,7 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
     });
   };
 
-  const handleMatrixCellClick = async (payload: StatusMatrixFilterPayload) => {
-    // 1. Try to find matching action in already loaded actionsData
-    const localMatch = actionsData?.results?.find((act) => {
-      if (payload.circle_id !== undefined && payload.circle_id !== null && act.circle?.id !== payload.circle_id) return false;
-      if (payload.owner_id !== undefined && payload.owner_id !== null && act.owner?.id !== payload.owner_id) return false;
-      if (payload.status !== undefined && act.status !== payload.status) return false;
-      if (payload.is_overdue !== undefined && act.is_overdue !== payload.is_overdue) return false;
-      return true;
-    });
-
-    if (localMatch) {
-      navigate(`/${effectiveMode}/tasks/${localMatch.id}`);
-      return;
-    }
-
-    // 2. Fetch the matching action from API and redirect to detail page
-    try {
-      const res = await governanceService.getActions({
-        circle_id: payload.circle_id ?? undefined,
-        owner_id: payload.owner_id ?? undefined,
-        status: payload.status ?? undefined,
-        is_overdue: payload.is_overdue ?? undefined,
-        page_size: 1,
-      });
-      if (res.results && res.results.length > 0) {
-        navigate(`/${effectiveMode}/tasks/${res.results[0].id}`);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-
-    // 3. Fallback: filter list and scroll to table
+  const handleMatrixCellClick = (payload: StatusMatrixFilterPayload) => {
     setFilters((prev) => ({
       ...prev,
       circle_id: payload.circle_id !== undefined ? payload.circle_id : prev.circle_id,

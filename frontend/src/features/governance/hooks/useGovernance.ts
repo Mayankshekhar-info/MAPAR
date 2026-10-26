@@ -313,3 +313,19 @@ export function useReviewTargetRevisionRequest() {
   });
 }
 
+export function useSendUrgentFollowUpEmail() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (args: number | { actionId: number; recipientUserId?: number }) => {
+      if (typeof args === "number") {
+        return governanceService.sendUrgentFollowUpEmail(args);
+      }
+      return governanceService.sendUrgentFollowUpEmail(args.actionId, args.recipientUserId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications", "logs"] });
+    },
+  });
+}
+
+

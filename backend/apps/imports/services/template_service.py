@@ -267,6 +267,9 @@ class TemplateService:
                     for c in validated_columns
                 ]
                 UploadTemplateColumn.objects.bulk_create(columns_to_create)
+                columns_count = len(validated_columns)
+            else:
+                columns_count = version.columns.count()
 
             HierarchyAuditLog.objects.create(
                 user=user if user and user.is_authenticated else None,
@@ -276,7 +279,7 @@ class TemplateService:
                 object_repr=f"Updated Template {template.name} v{version.version_number} (in-place)",
                 details={
                     "version_number": version.version_number,
-                    "columns_count": len(validated_columns) if raw_columns is not None else version.columns.count(),
+                    "columns_count": columns_count,
                 }
             )
 

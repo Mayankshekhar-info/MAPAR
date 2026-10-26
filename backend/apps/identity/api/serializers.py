@@ -10,6 +10,42 @@ class LoginRequestSerializer(serializers.Serializer):
     remember_me = serializers.BooleanField(required=False, default=False)
 
 
+class PasswordResetRequestSerializer(serializers.Serializer):
+    identifier = serializers.CharField(
+        required=True,
+        allow_blank=False,
+        trim_whitespace=True,
+        help_text="Registered username, email address, or employee ID",
+    )
+
+
+class PasswordResetVerifySerializer(serializers.Serializer):
+    identifier = serializers.CharField(required=True, allow_blank=False, trim_whitespace=True)
+    otp_code = serializers.CharField(required=True, min_length=6, max_length=6, trim_whitespace=True)
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    reset_token = serializers.CharField(required=True, allow_blank=False, trim_whitespace=True)
+    new_password = serializers.CharField(required=True, write_only=True, min_length=8)
+    confirm_password = serializers.CharField(required=True, write_only=True, min_length=8)
+
+    def validate(self, attrs):
+        if attrs["new_password"] != attrs["confirm_password"]:
+            raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
+        return attrs
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(required=True, write_only=True)
+    new_password = serializers.CharField(required=True, write_only=True, min_length=8)
+    confirm_password = serializers.CharField(required=True, write_only=True, min_length=8)
+
+    def validate(self, attrs):
+        if attrs["new_password"] != attrs["confirm_password"]:
+            raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
+        return attrs
+
+
 class UserSummarySerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     role = serializers.SerializerMethodField()

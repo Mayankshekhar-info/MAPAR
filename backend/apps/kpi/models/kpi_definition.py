@@ -1,3 +1,4 @@
+from typing import Optional
 from django.db import models
 from django.conf import settings
 from apps.organization.models import Domain, MainCompany, Project, Circle
@@ -5,6 +6,7 @@ from .kpi_config_version import KPIConfigurationVersion
 
 
 class KPIDefinition(models.Model):
+    source_dataset_id: Optional[int]
     """
     Universal Configurable KPI Definition.
     Enables users to configure arbitrary metrics, source datasets, fields,

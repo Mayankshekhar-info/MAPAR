@@ -474,6 +474,34 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
               <MenuItem value="Low">Low</MenuItem>
             </Select>
           </FormControl>
+
+          {/* Bucket Filter */}
+          {metadata?.buckets && metadata.buckets.length > 0 && (
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel id="bucket-filter-label" sx={{ fontSize: "0.82rem" }}>
+                Bucket
+              </InputLabel>
+              <Select
+                labelId="bucket-filter-label"
+                value={filters.bucket || "ALL"}
+                label="Bucket"
+                sx={{ borderRadius: "8px", backgroundColor: "#FFF", fontSize: "0.82rem" }}
+                onChange={(e) =>
+                  onFilterChange({
+                    bucket: e.target.value === "ALL" ? undefined : e.target.value,
+                    page: 1,
+                  })
+                }
+              >
+                <MenuItem value="ALL">All Buckets</MenuItem>
+                {metadata.buckets.map((b) => (
+                  <MenuItem key={b} value={b}>
+                    {b}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
         </Box>
       </Box>
 
@@ -494,6 +522,7 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
               <TableCell>Action ID</TableCell>
               <TableCell>Circle</TableCell>
               <TableCell>Function</TableCell>
+              <TableCell>Bucket</TableCell>
               <TableCell sx={{ minWidth: 220 }}>Action Point / Deliverable</TableCell>
               <TableCell>Owner</TableCell>
               <TableCell>Target Date</TableCell>
@@ -509,7 +538,7 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
           <TableBody>
             {actions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={14} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={15} align="center" sx={{ py: 6 }}>
                   <Typography variant="body2" sx={{ color: colorTokens.text.muted }}>
                     {isLoading ? "Loading action points..." : "No governance action points found."}
                   </Typography>
@@ -559,13 +588,62 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
                       {row.function_area}
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2" sx={{ fontWeight: 600, color: colorTokens.text.primary, fontSize: "0.82rem" }}>
-                        {row.action_point}
-                      </Typography>
-                      {row.key_deliverable && (
-                        <Typography variant="caption" sx={{ color: colorTokens.text.muted, display: "block", fontSize: "0.74rem" }}>
-                          Deliverable: {row.key_deliverable}
+                      {row.bucket ? (
+                        <Chip
+                          label={row.bucket}
+                          size="small"
+                          sx={{
+                            fontWeight: 600,
+                            fontSize: "0.72rem",
+                            backgroundColor: "#EFF6FF",
+                            color: "#1D4ED8",
+                            border: "1px solid #DBEAFE",
+                            borderRadius: "4px",
+                          }}
+                        />
+                      ) : (
+                        <Typography variant="caption" sx={{ color: colorTokens.text.muted }}>
+                          —
                         </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell sx={{ minWidth: 220, maxWidth: 360, wordBreak: "break-word" }}>
+                      <Tooltip title={row.action_point} placement="top-start" arrow enterDelay={400}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 600,
+                            color: colorTokens.text.primary,
+                            fontSize: "0.82rem",
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          {row.action_point}
+                        </Typography>
+                      </Tooltip>
+                      {row.key_deliverable && (
+                        <Tooltip title={row.key_deliverable} placement="top-start" arrow enterDelay={400}>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: colorTokens.text.muted,
+                              display: "-webkit-box",
+                              WebkitLineClamp: 1,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              fontSize: "0.74rem",
+                              mt: 0.25,
+                            }}
+                          >
+                            Deliverable: {row.key_deliverable}
+                          </Typography>
+                        </Tooltip>
                       )}
                     </TableCell>
                     <TableCell>
@@ -608,7 +686,7 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
                       </Box>
                     </TableCell>
                     <TableCell>
-                      <Typography variant="body2" sx={{ fontWeight: 700, fontSize: "0.78rem", color: row.current_progress_percent && row.current_progress_percent >= 100 ? colorTokens.status.success : colorTokens.text.primary }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700, fontSize: "0.78rem", color: row.current_progress_percent && row.current_progress_percent >= 100 ? colorTokens.status.success.main : colorTokens.text.primary }}>
                         {row.current_progress_percent || 0}%
                       </Typography>
                     </TableCell>
@@ -662,7 +740,7 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
                         </Tooltip>
                         <Tooltip
                           title={
-                            window.location.pathname.startsWith("/audit")
+                            location.pathname.startsWith("/audit")
                               ? "Request Target Date Revision"
                               : "Revise Target Date"
                           }

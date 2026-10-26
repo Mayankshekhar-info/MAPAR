@@ -12,10 +12,6 @@ import InputAdornment from "@mui/material/InputAdornment";
 import CircularProgress from "@mui/material/CircularProgress";
 import Link from "@mui/material/Link";
 import Typography from "@mui/material/Typography";
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import DialogActions from "@mui/material/DialogActions";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import PersonOutline from "@mui/icons-material/PersonOutline";
@@ -23,6 +19,7 @@ import LockOutlined from "@mui/icons-material/LockOutlined";
 
 import { LoginFormData, loginSchema } from "../schemas/login.schema";
 import { LoginCredentials } from "../types/auth.types";
+import { PasswordResetDialog } from "./PasswordResetDialog";
 
 interface LoginFormProps {
   onSubmit: (credentials: LoginCredentials) => void;
@@ -40,7 +37,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   dark = false,
 }) => {
   const [showPassword, setShowPassword] = useState(false);
-  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  const [passwordResetOpen, setPasswordResetOpen] = useState(false);
 
   const {
     control,
@@ -156,7 +153,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             component="button"
             type="button"
             variant="body2"
-            onClick={() => setForgotPasswordOpen(true)}
+            onClick={() => setPasswordResetOpen(true)}
             sx={{
               fontSize: "0.825rem",
               fontWeight: 600,
@@ -165,7 +162,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               "&:hover": { textDecoration: "underline" },
             }}
           >
-            Forgot password?
+            Change Password?
           </Link>
         </Box>
         <Controller
@@ -308,48 +305,12 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         Protected by corporate multi-factor session security & role-scoped authorization.
       </Typography>
 
-      {/* Forgot Password Helper Dialog */}
-      <Dialog
-        open={forgotPasswordOpen}
-        onClose={() => setForgotPasswordOpen(false)}
-        maxWidth="xs"
-        fullWidth
-        slotProps={{
-          paper: {
-            sx: { borderRadius: 2, p: 1 },
-          },
-        }}
-      >
-        <DialogTitle sx={{ fontWeight: 700, fontSize: "1.1rem", color: "#1E293B" }}>
-          Reset Account Access
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ color: "#475569", mb: 1.5 }}>
-            MAPAR utilizes enterprise centralized identity. If you forgot your password or need an account unlock:
-          </Typography>
-          <Box sx={{ bgcolor: "#F1F5F9", p: 1.5, borderRadius: 1.5, border: "1px solid #E2E8F0" }}>
-            <Typography variant="caption" sx={{ display: "block", fontWeight: 600, color: "#1E293B" }}>
-              Corporate Helpdesk Contact:
-            </Typography>
-            <Typography variant="caption" sx={{ display: "block", color: "#64748B" }}>
-              Email: <strong>it.security@telecrats.in</strong>
-            </Typography>
-            <Typography variant="caption" sx={{ display: "block", color: "#64748B" }}>
-              Internal Extension: <strong>#4402</strong>
-            </Typography>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setForgotPasswordOpen(false)}
-            variant="contained"
-            size="small"
-            sx={{ textTransform: "none", borderRadius: 1 }}
-          >
-            Got it
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Self-Service Password Recovery Dialog */}
+      <PasswordResetDialog
+        open={passwordResetOpen}
+        onClose={() => setPasswordResetOpen(false)}
+        dark={dark}
+      />
     </Box>
   );
 };

@@ -46,8 +46,15 @@ class GovernanceEvidenceService:
             return True
         if action_point.assigned_by_id == user.id:
             return True
+
         user_circle_id = getattr(user, "circle_id", None) or (user.circle.id if getattr(user, "circle", None) else None)
-        if user.role in [User.Role.CIRCLE_DOMAIN_MANAGER, User.Role.CIRCLE_DATA_ENTRY] and user_circle_id == action_point.circle_id:
+        from common.permissions.authorization import AuthorizationService
+        scope = AuthorizationService.get_user_hierarchy_scope(user)
+        in_user_scope = (
+            (user_circle_id and user_circle_id == action_point.circle_id)
+            or (scope.circle_ids and action_point.circle_id in scope.circle_ids)
+        )
+        if in_user_scope:
             return True
         return False
 
@@ -61,8 +68,15 @@ class GovernanceEvidenceService:
             return True
         if action_point.assigned_by_id == user.id:
             return True
+
         user_circle_id = getattr(user, "circle_id", None) or (user.circle.id if getattr(user, "circle", None) else None)
-        if user.role == User.Role.CIRCLE_DOMAIN_MANAGER and user_circle_id == action_point.circle_id:
+        from common.permissions.authorization import AuthorizationService
+        scope = AuthorizationService.get_user_hierarchy_scope(user)
+        in_user_scope = (
+            (user_circle_id and user_circle_id == action_point.circle_id)
+            or (scope.circle_ids and action_point.circle_id in scope.circle_ids)
+        )
+        if in_user_scope and getattr(user, "role", "") not in [User.Role.ACTION_OWNER, User.Role.VIEWER]:
             return True
         return False
 
@@ -74,6 +88,7 @@ class GovernanceEvidenceService:
         title: str,
         description: str,
         user: User,
+        reporting_week: str = "",
     ) -> GovernanceEvidence:
         """
         Submits new or resubmitted proof file against an action point.
@@ -84,35 +99,64 @@ class GovernanceEvidenceService:
 
         cls.validate_file(uploaded_file)
 
-        orig_name = uploaded_file.name or "evidence"
+        orig_name = os.path.basename(uploaded_file.name or "evidence")
+        from django.utils.text import get_valid_filename
+        clean_name = get_valid_filename(orig_name)
+        if not clean_name:
+            clean_name = f"evidence_{int(timezone.now().timestamp())}.dat"
+
+        file_size = uploaded_file.size or 0
+        if file_size <= 0:
+            raise ValidationError({"file": "Uploaded file is empty (0 bytes)."})
+
         if not title or not title.strip():
-            title = os.path.splitext(orig_name)[0]
+            title = os.path.splitext(clean_name)[0]
 
-        with transaction.atomic():
-            latest_item = action_point.evidence_items.order_by("-version").first()
-            version = (latest_item.version + 1) if latest_item else 1
+        uploaded_file.name = clean_name
+        created_file_path = None
 
-            evidence = GovernanceEvidence.objects.create(
-                action_point=action_point,
-                version=version,
-                title=title.strip(),
-                description=description.strip() if description else "",
-                file=uploaded_file,
-                file_name=orig_name,
-                file_size=uploaded_file.size or 0,
-                file_type=getattr(uploaded_file, "content_type", "") or "",
-                submitted_by=user,
-                status=GovernanceEvidence.Status.PENDING_REVIEW,
-            )
+        try:
+            with transaction.atomic():
+                latest_item = action_point.evidence_items.order_by("-version").first()
+                version = (latest_item.version + 1) if latest_item else 1
 
-            # Update parent action point evidence status
-            action_point.evidence_status = GovernanceActionPoint.EvidenceStatus.PENDING_REVIEW
-            # If item was Open and evidence is submitted, optionally set WIP
-            if action_point.status == GovernanceActionPoint.Status.OPEN:
-                action_point.status = GovernanceActionPoint.Status.WIP
-            action_point.save()
+                evidence = GovernanceEvidence.objects.create(
+                    action_point=action_point,
+                    version=version,
+                    reporting_week=reporting_week.strip() if reporting_week else "",
+                    title=title.strip(),
+                    description=description.strip() if description else "",
+                    file=uploaded_file,
+                    file_name=clean_name,
+                    file_size=file_size,
+                    file_type=getattr(uploaded_file, "content_type", "") or "",
+                    submitted_by=user,
+                    status=GovernanceEvidence.Status.PENDING_REVIEW,
+                )
+                created_file_path = evidence.file.name
 
-        return evidence
+                # Verify file was written to centralized storage
+                if not evidence.file.storage.exists(evidence.file.name):
+                    raise ValidationError({"file": "Storage provider failed to persist file content."})
+
+                # Update parent action point evidence status
+                action_point.evidence_status = GovernanceActionPoint.EvidenceStatus.PENDING_REVIEW
+                # If item was Open and evidence is submitted, optionally set WIP
+                if action_point.status == GovernanceActionPoint.Status.OPEN:
+                    action_point.status = GovernanceActionPoint.Status.WIP
+                action_point.save()
+
+            return evidence
+        except Exception:
+            # Clean up orphaned storage file if database transaction or verification fails
+            if created_file_path:
+                try:
+                    from django.core.files.storage import default_storage
+                    if default_storage.exists(created_file_path):
+                        default_storage.delete(created_file_path)
+                except Exception:
+                    pass
+            raise
 
     @classmethod
     def review_evidence(
@@ -258,4 +302,43 @@ class GovernanceEvidenceService:
             "failed_count": failure_count,
             "results": results,
         }
+
+    @classmethod
+    def delete_evidence(cls, evidence: GovernanceEvidence, user: User) -> bool:
+        """
+        Safely deletes an evidence document and removes its file from centralized storage.
+        Restricted to Super Admin or Management.
+        Re-evaluates parent task evidence status.
+        """
+        if not (
+            user.is_superuser
+            or getattr(user, "is_superadmin", False)
+            or user.role in [User.Role.SUPER_ADMIN, User.Role.MANAGEMENT]
+        ):
+            raise PermissionDenied("Only Super Admins or Management can delete evidence records.")
+
+        action_point = evidence.action_point
+        file_storage_name = evidence.file.name if evidence.file else None
+
+        with transaction.atomic():
+            evidence.delete()
+
+            # Re-evaluate parent task evidence_status
+            remaining = action_point.evidence_items.order_by("-version").first()
+            if remaining:
+                action_point.evidence_status = remaining.status
+            else:
+                action_point.evidence_status = GovernanceActionPoint.EvidenceStatus.NOT_SUBMITTED
+            action_point.save()
+
+        # Delete file from storage after successful database commit
+        if file_storage_name:
+            try:
+                from django.core.files.storage import default_storage
+                if default_storage.exists(file_storage_name):
+                    default_storage.delete(file_storage_name)
+            except Exception:
+                pass
+
+        return True
 

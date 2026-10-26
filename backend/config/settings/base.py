@@ -36,7 +36,9 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get("DEBUG", "False").lower() in ("true", "1", "yes")
 
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
+if "testserver" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("testserver")
 
 ENV_CSRF_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "")
 if ENV_CSRF_ORIGINS:
@@ -175,8 +177,17 @@ STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 
-MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_URL = os.environ.get("MEDIA_URL", "/media/")
+MEDIA_ROOT = Path(os.environ.get("MAPAR_MEDIA_ROOT", BASE_DIR / "media"))
+
+STORAGES = {
+    "default": {
+        "BACKEND": os.environ.get("DEFAULT_FILE_STORAGE", "django.core.files.storage.FileSystemStorage"),
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -213,42 +224,32 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute=0, hour=10, day_of_week="friday"),
         "kwargs": {"target_slot": "Friday:10:00"},
     },
-    # Saturday: 3 reminders at 9:00 AM, 1:00 PM, 5:00 PM IST
+    # Saturday: 2 reminders at 9:00 AM and 5:00 PM IST
     "saturday-reminder-9am": {
         "task": "apps.notifications.tasks.process_scheduled_reminders_task",
         "schedule": crontab(minute=0, hour=9, day_of_week="saturday"),
         "kwargs": {"target_slot": "Saturday:09:00"},
-    },
-    "saturday-reminder-1pm": {
-        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
-        "schedule": crontab(minute=0, hour=13, day_of_week="saturday"),
-        "kwargs": {"target_slot": "Saturday:13:00"},
     },
     "saturday-reminder-5pm": {
         "task": "apps.notifications.tasks.process_scheduled_reminders_task",
         "schedule": crontab(minute=0, hour=17, day_of_week="saturday"),
         "kwargs": {"target_slot": "Saturday:17:00"},
     },
-    # Sunday: 4 reminders at 9:00 AM, 12:00 PM, 3:00 PM, 6:00 PM IST
+    # Sunday: 3 reminders at 9:00 AM, 1:00 PM, 5:00 PM IST
     "sunday-reminder-9am": {
         "task": "apps.notifications.tasks.process_scheduled_reminders_task",
         "schedule": crontab(minute=0, hour=9, day_of_week="sunday"),
         "kwargs": {"target_slot": "Sunday:09:00"},
     },
-    "sunday-reminder-12pm": {
+    "sunday-reminder-1pm": {
         "task": "apps.notifications.tasks.process_scheduled_reminders_task",
-        "schedule": crontab(minute=0, hour=12, day_of_week="sunday"),
-        "kwargs": {"target_slot": "Sunday:12:00"},
+        "schedule": crontab(minute=0, hour=13, day_of_week="sunday"),
+        "kwargs": {"target_slot": "Sunday:13:00"},
     },
-    "sunday-reminder-3pm": {
+    "sunday-reminder-5pm": {
         "task": "apps.notifications.tasks.process_scheduled_reminders_task",
-        "schedule": crontab(minute=0, hour=15, day_of_week="sunday"),
-        "kwargs": {"target_slot": "Sunday:15:00"},
-    },
-    "sunday-reminder-6pm": {
-        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
-        "schedule": crontab(minute=0, hour=18, day_of_week="sunday"),
-        "kwargs": {"target_slot": "Sunday:18:00"},
+        "schedule": crontab(minute=0, hour=17, day_of_week="sunday"),
+        "kwargs": {"target_slot": "Sunday:17:00"},
     },
 }
 

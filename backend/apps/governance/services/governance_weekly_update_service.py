@@ -72,64 +72,68 @@ class GovernanceWeeklyUpdateService:
         if status_val not in GovernanceActionPoint.Status.values:
             status_val = GovernanceActionPoint.Status.WIP
 
-        week_start_date = data.get("week_start_date")
-        week_end_date = data.get("week_end_date")
+        week_start_date = cls._parse_date(data.get("week_start_date"))
+        week_end_date = cls._parse_date(data.get("week_end_date"))
         achievements = str(data.get("achievements") or "").strip()
         blockers = str(data.get("blockers") or "").strip()
         next_week_plan = str(data.get("next_week_plan") or "").strip()
-        actual_closure_date = data.get("actual_closure_date")
+        actual_closure_date = cls._parse_date(data.get("actual_closure_date"))
         remarks = str(data.get("remarks") or "").strip()
 
         with transaction.atomic():
-            existing = GovernanceWeeklyUpdate.objects.filter(
+            # Retrieve latest update to establish progression
+            latest_update = GovernanceWeeklyUpdate.objects.filter(
+                action_point=action_point,
+            ).order_by("-submitted_at", "-id").first()
+
+            prev_progress = (
+                latest_update.progress_percent
+                if latest_update
+                else (action_point.current_progress_percent or 0)
+            )
+            prev_status = (
+                latest_update.status
+                if latest_update
+                else action_point.status
+            )
+
+            # Determine revision count within this reporting week & total sequence
+            week_updates_count = GovernanceWeeklyUpdate.objects.filter(
                 action_point=action_point,
                 reporting_week=reporting_week,
-            ).first()
+            ).count()
+            revision_num = week_updates_count + 1
 
-            if existing and not allow_revision:
-                raise ValidationError({
-                    "reporting_week": f"A weekly update for '{reporting_week}' already exists for this task. Select 'Revise Existing' to update it."
-                })
+            total_updates_count = GovernanceWeeklyUpdate.objects.filter(
+                action_point=action_point,
+            ).count()
+            update_seq = total_updates_count + 1
 
-            if existing and allow_revision:
-                existing.work_completed = work_completed
-                existing.progress_percent = progress_percent
-                existing.achievements = achievements
-                existing.blockers = blockers
-                existing.next_week_plan = next_week_plan
-                existing.status = status_val
-                if actual_closure_date:
-                    existing.actual_closure_date = actual_closure_date
-                if week_start_date:
-                    existing.week_start_date = week_start_date
-                if week_end_date:
-                    existing.week_end_date = week_end_date
-                existing.remarks = remarks
-                existing.revision_number += 1
-                existing.submitted_by = user
-                existing.save()
-                update_obj = existing
-            else:
-                update_obj = GovernanceWeeklyUpdate.objects.create(
-                    action_point=action_point,
-                    reporting_week=reporting_week,
-                    week_start_date=week_start_date,
-                    week_end_date=week_end_date,
-                    work_completed=work_completed,
-                    progress_percent=progress_percent,
-                    achievements=achievements,
-                    blockers=blockers,
-                    next_week_plan=next_week_plan,
-                    status=status_val,
-                    actual_closure_date=actual_closure_date,
-                    remarks=remarks,
-                    submitted_by=user,
-                )
+            update_obj = GovernanceWeeklyUpdate.objects.create(
+                action_point=action_point,
+                reporting_week=reporting_week,
+                week_start_date=week_start_date,
+                week_end_date=week_end_date,
+                work_completed=work_completed,
+                progress_percent=progress_percent,
+                previous_progress_percent=prev_progress,
+                previous_status=prev_status,
+                update_sequence=update_seq,
+                revision_number=revision_num,
+                achievements=achievements,
+                blockers=blockers,
+                next_week_plan=next_week_plan,
+                status=status_val,
+                actual_closure_date=actual_closure_date,
+                remarks=remarks,
+                submitted_by=user,
+            )
 
             # Sync parent action point progress & latest summary notes
             action_point.current_progress_percent = progress_percent
-            summary_snippet = f"[{reporting_week}] {work_completed[:120]}"
+            summary_snippet = f"[{reporting_week} #{revision_num}] {work_completed[:120]}"
             action_point.last_update = summary_snippet
+            action_point.reporting_week = reporting_week
 
             # If user selected Completed or Closed
             if status_val == GovernanceActionPoint.Status.CLOSED:
@@ -352,9 +356,12 @@ class GovernanceWeeklyUpdateService:
         if isinstance(val, date):
             return val
         val_str = str(val).strip()
+        if not val_str:
+            return None
+        clean_str = val_str.split("T")[0].split(" ")[0].strip()
         for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d"):
             try:
-                return datetime.strptime(val_str, fmt).date()
+                return datetime.strptime(clean_str, fmt).date()
             except ValueError:
                 continue
         return None
@@ -484,9 +491,10 @@ class GovernanceWeeklyUpdateService:
                 errors.append("Task ID is missing.")
                 action = None
             else:
-                action = GovernanceActionPoint.objects.filter(
-                    Q(action_id__iexact=task_id_str) | Q(id__iexact=task_id_str)
-                ).first()
+                task_q = Q(action_id__iexact=task_id_str)
+                if task_id_str.isdigit():
+                    task_q |= Q(id=int(task_id_str))
+                action = GovernanceActionPoint.objects.filter(task_q).first()
                 if not action:
                     errors.append(f"Task ID '{task_id_str}' does not exist.")
 
@@ -599,9 +607,11 @@ class GovernanceWeeklyUpdateService:
                 continue
 
             try:
-                action = GovernanceActionPoint.objects.filter(
-                    Q(action_id__iexact=task_id) | Q(id__iexact=task_id)
-                ).first()
+                commit_task_str = str(task_id).strip()
+                task_q = Q(action_id__iexact=commit_task_str)
+                if commit_task_str.isdigit():
+                    task_q |= Q(id=int(commit_task_str))
+                action = GovernanceActionPoint.objects.filter(task_q).first()
 
                 if not action:
                     raise ValidationError(f"Task ID '{task_id}' not found.")

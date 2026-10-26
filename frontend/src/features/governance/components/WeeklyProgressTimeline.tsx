@@ -95,58 +95,130 @@ export const WeeklyProgressTimeline: React.FC<WeeklyProgressTimelineProps> = ({ 
                     mb: 1.5,
                   }}
                 >
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, color: colorTokens.text.primary }}>
                       {u.reporting_week}
                     </Typography>
-                    {u.revision_number > 1 && (
+                    {isLatest && (
                       <Chip
-                        label={`Rev #${u.revision_number}`}
+                        label="LATEST UPDATE"
                         size="small"
-                        sx={{ height: 20, fontSize: "0.65rem", fontWeight: 700 }}
+                        sx={{
+                          height: 20,
+                          fontSize: "0.65rem",
+                          fontWeight: 800,
+                          backgroundColor: `${colorTokens.primary.main}20`,
+                          color: colorTokens.primary.main,
+                          border: `1px solid ${colorTokens.primary.main}40`,
+                          letterSpacing: "0.5px",
+                        }}
                       />
                     )}
-                    <Chip
-                      label={`${u.progress_percent}% Progress`}
-                      size="small"
-                      sx={{
-                        height: 22,
-                        fontWeight: 700,
-                        fontSize: "0.7rem",
-                        backgroundColor:
-                          u.progress_percent >= 100
-                            ? `${colorTokens.status.success.main}15`
-                            : `${colorTokens.primary.main}15`,
-                        color:
-                          u.progress_percent >= 100 ? colorTokens.status.success.main : colorTokens.primary.main,
-                      }}
-                    />
-                    <Chip
-                      label={u.status}
-                      size="small"
-                      sx={{
-                        height: 22,
-                        fontSize: "0.7rem",
-                        fontWeight: 600,
-                        backgroundColor:
-                          u.status === "Closed"
-                            ? `${colorTokens.status.success.main}15`
-                            : u.status === "WIP"
-                            ? `${colorTokens.primary.main}15`
-                            : `${colorTokens.status.warning.main}15`,
-                        color:
-                          u.status === "Closed"
-                            ? colorTokens.status.success.main
-                            : u.status === "WIP"
-                            ? colorTokens.primary.main
-                            : colorTokens.status.warning.main,
-                      }}
-                    />
+                    {u.bucket && (
+                      <Chip
+                        label={`Bucket: ${u.bucket}`}
+                        size="small"
+                        sx={{
+                          height: 20,
+                          fontSize: "0.65rem",
+                          fontWeight: 600,
+                          backgroundColor: "#EFF6FF",
+                          color: "#1D4ED8",
+                          border: "1px solid #DBEAFE",
+                        }}
+                      />
+                    )}
+                    {u.revision_number > 1 && (
+                      <Chip
+                        label={`Week Entry #${u.revision_number}`}
+                        size="small"
+                        sx={{ height: 20, fontSize: "0.65rem", fontWeight: 700, backgroundColor: "#EEF2F6" }}
+                      />
+                    )}
+                    {u.previous_progress_percent !== undefined && u.previous_progress_percent !== null && u.previous_progress_percent !== u.progress_percent ? (
+                      <Chip
+                        label={`${u.previous_progress_percent}% → ${u.progress_percent}% Progress`}
+                        size="small"
+                        sx={{
+                          height: 22,
+                          fontWeight: 700,
+                          fontSize: "0.7rem",
+                          backgroundColor:
+                            u.progress_percent >= 100
+                              ? `${colorTokens.status.success.main}15`
+                              : `${colorTokens.primary.main}15`,
+                          color:
+                            u.progress_percent >= 100 ? colorTokens.status.success.main : colorTokens.primary.main,
+                        }}
+                      />
+                    ) : (
+                      <Chip
+                        label={`${u.progress_percent}% Progress`}
+                        size="small"
+                        sx={{
+                          height: 22,
+                          fontWeight: 700,
+                          fontSize: "0.7rem",
+                          backgroundColor:
+                            u.progress_percent >= 100
+                              ? `${colorTokens.status.success.main}15`
+                              : `${colorTokens.primary.main}15`,
+                          color:
+                            u.progress_percent >= 100 ? colorTokens.status.success.main : colorTokens.primary.main,
+                        }}
+                      />
+                    )}
+                    {u.previous_status && u.previous_status !== u.status ? (
+                      <Chip
+                        label={`${u.previous_status} → ${u.status}`}
+                        size="small"
+                        sx={{
+                          height: 22,
+                          fontSize: "0.7rem",
+                          fontWeight: 700,
+                          backgroundColor:
+                            u.status === "Closed"
+                              ? `${colorTokens.status.success.main}15`
+                              : u.status === "WIP"
+                              ? `${colorTokens.primary.main}15`
+                              : `${colorTokens.status.warning.main}15`,
+                          color:
+                            u.status === "Closed"
+                              ? colorTokens.status.success.main
+                              : u.status === "WIP"
+                              ? colorTokens.primary.main
+                              : colorTokens.status.warning.main,
+                        }}
+                      />
+                    ) : (
+                      <Chip
+                        label={u.status}
+                        size="small"
+                        sx={{
+                          height: 22,
+                          fontSize: "0.7rem",
+                          fontWeight: 600,
+                          backgroundColor:
+                            u.status === "Closed"
+                              ? `${colorTokens.status.success.main}15`
+                              : u.status === "WIP"
+                              ? `${colorTokens.primary.main}15`
+                              : `${colorTokens.status.warning.main}15`,
+                          color:
+                            u.status === "Closed"
+                              ? colorTokens.status.success.main
+                              : u.status === "WIP"
+                              ? colorTokens.primary.main
+                              : colorTokens.status.warning.main,
+                        }}
+                      />
+                    )}
                   </Box>
 
                   <Typography variant="caption" sx={{ color: colorTokens.text.secondary }}>
                     Reported by {u.submitted_by?.full_name || u.submitted_by?.username || "Owner"} on{" "}
-                    {new Date(u.submitted_at).toLocaleDateString()}
+                    {new Date(u.submitted_at).toLocaleDateString()} at{" "}
+                    {new Date(u.submitted_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </Typography>
                 </Box>
 

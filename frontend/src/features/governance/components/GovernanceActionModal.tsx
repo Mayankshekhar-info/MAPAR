@@ -53,6 +53,7 @@ export const GovernanceActionModal: React.FC<GovernanceActionModalProps> = ({
   const [hierarchyLevel, setHierarchyLevel] = useState<string>("CIRCLE");
   const [circleId, setCircleId] = useState<number | "">("");
   const [functionArea, setFunctionArea] = useState<string>("Operations");
+  const [bucket, setBucket] = useState<string>("");
   const [actionPoint, setActionPoint] = useState<string>("");
   const [keyDeliverable, setKeyDeliverable] = useState<string>("");
   const [ownerId, setOwnerId] = useState<number | "">("");
@@ -138,6 +139,7 @@ export const GovernanceActionModal: React.FC<GovernanceActionModalProps> = ({
       setHierarchyLevel(action.hierarchy_level || "CIRCLE");
       setCircleId(action.circle?.id || "");
       setFunctionArea(action.function_area || "Operations");
+      setBucket(action.bucket || "");
       setActionPoint(action.action_point || "");
       setKeyDeliverable(action.key_deliverable || "");
       if (action.owner) {
@@ -158,6 +160,7 @@ export const GovernanceActionModal: React.FC<GovernanceActionModalProps> = ({
       setHierarchyLevel("CIRCLE");
       setCircleId(metadata?.circles[0]?.id || "");
       setFunctionArea("Operations");
+      setBucket("");
       setActionPoint("");
       setKeyDeliverable("");
       setSelectedUser(null);
@@ -231,6 +234,7 @@ export const GovernanceActionModal: React.FC<GovernanceActionModalProps> = ({
           hierarchy_node_id: Number(circleId),
           hierarchy_path: pathStr,
           function_area: functionArea,
+          bucket: bucket.trim(),
           action_point: actionPoint.trim(),
           key_deliverable: keyDeliverable.trim(),
           owner_id: finalOwnerId,
@@ -247,6 +251,7 @@ export const GovernanceActionModal: React.FC<GovernanceActionModalProps> = ({
           hierarchy_node_id: Number(circleId),
           hierarchy_path: pathStr,
           function_area: functionArea,
+          bucket: bucket.trim(),
           action_point: actionPoint.trim(),
           key_deliverable: keyDeliverable.trim(),
           owner_id: finalOwnerId,
@@ -534,6 +539,16 @@ export const GovernanceActionModal: React.FC<GovernanceActionModalProps> = ({
               </Select>
             </FormControl>
           </Box>
+
+          <TextField
+            label="Bucket"
+            value={bucket}
+            onChange={(e) => setBucket(e.target.value)}
+            fullWidth
+            size="small"
+            placeholder="e.g. Audit Finding, Statutory Compliance, Vendor Review..."
+            helperText="Classification bucket (distinct from dynamic Ageing duration bucket)"
+          />
 
           <TextField
             label="Task Action Point / Title"

@@ -304,9 +304,25 @@ export const GovernanceTargetTimeline: React.FC<GovernanceTargetTimelineProps> =
                   >
                     <Box>
                       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-                        <Typography variant="caption" sx={{ fontWeight: 700, color: colorTokens.primary.main, fontSize: "0.72rem" }}>
-                          {act.action_id}
-                        </Typography>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexWrap: "wrap" }}>
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: colorTokens.primary.main, fontSize: "0.72rem" }}>
+                            {act.action_id}
+                          </Typography>
+                          {act.bucket && (
+                            <Chip
+                              label={act.bucket}
+                              size="small"
+                              sx={{
+                                height: 16,
+                                fontSize: "0.62rem",
+                                fontWeight: 600,
+                                backgroundColor: "#EFF6FF",
+                                color: "#1D4ED8",
+                                border: "1px solid #DBEAFE",
+                              }}
+                            />
+                          )}
+                        </Box>
                         <Chip
                           label={act.priority}
                           size="small"

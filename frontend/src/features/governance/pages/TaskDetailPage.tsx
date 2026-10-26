@@ -14,7 +14,6 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import EventRepeatIcon from "@mui/icons-material/EventRepeat";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import EditCalendarIcon from "@mui/icons-material/EditCalendar";
-import CorporateFareIcon from "@mui/icons-material/CorporateFare";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import DownloadIcon from "@mui/icons-material/Download";
 import FactCheckIcon from "@mui/icons-material/FactCheck";
@@ -24,6 +23,7 @@ import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
+import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
 import dayjs from "dayjs";
 
 import { colorTokens, radiusTokens } from "../../../app/theme/tokens";
@@ -48,6 +48,7 @@ import { GovernanceRevisionModal } from "../components/GovernanceRevisionModal";
 import { RequestTargetRevisionModal } from "../components/RequestTargetRevisionModal";
 import { ReviewRevisionRequestDialog } from "../components/ReviewRevisionRequestDialog";
 import { MandatoryEvidenceClosureModal } from "../components/MandatoryEvidenceClosureModal";
+import { SendTaskEmailModal } from "../components/SendTaskEmailModal";
 import {
   GovernanceEvidenceItem,
   SubmitWeeklyUpdatePayload,
@@ -86,6 +87,7 @@ export const TaskDetailPage: React.FC = () => {
   const [isEvidenceReviewOpen, setIsEvidenceReviewOpen] = useState(false);
   const [isMandatoryEvidenceModalOpen, setIsMandatoryEvidenceModalOpen] = useState(false);
   const [selectedEvidenceForReview, setSelectedEvidenceForReview] = useState<GovernanceEvidenceItem | null>(null);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
   const [notification, setNotification] = useState<{ message: string; severity: "success" | "error" } | null>(null);
 
@@ -280,22 +282,24 @@ export const TaskDetailPage: React.FC = () => {
                   sx={{ backgroundColor: `${colorTokens.status.error.main}20`, color: colorTokens.status.error.main, fontWeight: 800 }}
                 />
               )}
+              {action.bucket && (
+                <Chip
+                  label={`Bucket: ${action.bucket}`}
+                  size="small"
+                  sx={{
+                    fontSize: "0.72rem",
+                    fontWeight: 600,
+                    backgroundColor: "#EFF6FF",
+                    color: "#1D4ED8",
+                    border: "1px solid #DBEAFE",
+                  }}
+                />
+              )}
             </Box>
 
             <Typography variant="h6" sx={{ fontWeight: 700, color: colorTokens.text.primary, mb: 1 }}>
               {action.action_point}
             </Typography>
-
-            {/* Resolved Organization Breadcrumb Path */}
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, color: colorTokens.text.secondary, fontSize: "0.82rem" }}>
-              <CorporateFareIcon sx={{ fontSize: 16, color: colorTokens.text.muted }} />
-              <Typography variant="caption" sx={{ fontWeight: 600, color: colorTokens.text.secondary }}>
-                {resolved_hierarchy_path || action.circle.name}
-              </Typography>
-              <Typography variant="caption" sx={{ color: colorTokens.text.muted }}>
-                • Function: {action.function_area}
-              </Typography>
-            </Box>
           </Box>
 
           {/* Quick Action Buttons */}
@@ -347,6 +351,21 @@ export const TaskDetailPage: React.FC = () => {
               }}
             >
               Upload Proof
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<EmailOutlinedIcon />}
+              onClick={() => setIsEmailModalOpen(true)}
+              sx={{
+                color: colorTokens.primary.main,
+                borderColor: colorTokens.workspace.border,
+                borderRadius: radiusTokens.sm,
+                fontWeight: 600,
+                textTransform: "none",
+                "&:hover": { borderColor: colorTokens.primary.main, backgroundColor: "#F0F9FF" },
+              }}
+            >
+              Send Email
             </Button>
             {/* Target Date Action: In Audit mode or for assignees, offer Request Target Date Revision */}
             {isAuditMode || !can_review_revision ? (
@@ -450,6 +469,15 @@ export const TaskDetailPage: React.FC = () => {
                 </Typography>
                 <Typography variant="body2" sx={{ fontWeight: 700, color: action.is_overdue ? colorTokens.status.error.main : colorTokens.text.primary }}>
                   {action.current_target_date}
+                </Typography>
+              </Box>
+
+              <Box>
+                <Typography variant="caption" sx={{ color: colorTokens.text.muted, display: "block" }}>
+                  Bucket
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: action.bucket ? colorTokens.primary.main : colorTokens.text.primary }}>
+                  {action.bucket || "—"}
                 </Typography>
               </Box>
             </Box>
@@ -1235,6 +1263,14 @@ export const TaskDetailPage: React.FC = () => {
           setNotification({ message: res.message, severity: "success" });
           refetch();
         }}
+      />
+
+      <SendTaskEmailModal
+        open={isEmailModalOpen}
+        onClose={() => setIsEmailModalOpen(false)}
+        task={action}
+        onSuccess={(msg) => setNotification({ message: msg, severity: "success" })}
+        onError={(msg) => setNotification({ message: msg, severity: "error" })}
       />
     </Box>
   );

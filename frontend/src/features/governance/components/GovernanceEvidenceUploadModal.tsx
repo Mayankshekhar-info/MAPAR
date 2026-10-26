@@ -119,7 +119,7 @@ export const GovernanceEvidenceUploadModal: React.FC<GovernanceEvidenceUploadMod
           </Typography>
           <Typography variant="caption" sx={{ color: colorTokens.text.muted }}>
             {effectiveAction
-              ? `Task: ${effectiveAction.action_id} — ${effectiveAction.action_point.slice(0, 45)}...`
+              ? `Task: ${effectiveAction.action_id} — ${(effectiveAction.action_point || "").slice(0, 45)}...`
               : "Select a governance task to attach supporting proof"}
           </Typography>
         </DialogTitle>
@@ -144,7 +144,7 @@ export const GovernanceEvidenceUploadModal: React.FC<GovernanceEvidenceUploadMod
               >
                 {availableActions.map((act) => (
                   <MenuItem key={act.id} value={act.id}>
-                    {act.action_id} — {act.action_point.slice(0, 50)} ({act.circle?.code || "Org"})
+                    {act.action_id} — {(act.action_point || "").slice(0, 50)} ({act.circle?.code || "Org"})
                   </MenuItem>
                 ))}
               </Select>

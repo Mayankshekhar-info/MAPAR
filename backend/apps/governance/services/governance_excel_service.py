@@ -29,7 +29,7 @@ class GovernanceExcelService:
 
     # Field aliases map for robust header identification without positional guessing
     FIELD_ALIASES = {
-        "action_id": ["action id (optional)", "action id", "action_id", "s.no", "sno", "task id"],
+        "action_id": ["action id (optional)", "action id", "action_id", "s.no", "sno", "task id", "action code", "action item id"],
         "circle": ["circle code", "circle name", "circle", "state", "region"],
         "function_area": ["function/area", "function area", "function", "area", "domain"],
         "action_point": ["action point", "action item", "task description", "description"],
@@ -49,6 +49,9 @@ class GovernanceExcelService:
         "reporting_week": [
             "reporting week", "week", "week no", "week no.", "week number", "week #",
             "reporting_week", "period week", "review week", "meeting week"
+        ],
+        "bucket": [
+            "bucket", "action bucket", "task bucket", "category bucket", "classification bucket", "business bucket"
         ],
     }
 
@@ -98,6 +101,7 @@ class GovernanceExcelService:
         "Weeks in Review",
         "Last Update",
         "Week",
+        "Bucket",
     ]
 
     @classmethod
@@ -194,7 +198,7 @@ class GovernanceExcelService:
         ws_tracker.cell(
             row=2,
             column=1,
-            value="Fill only the white input columns (A-I, N). Ageing, Ageing Bucket and Escalation Flag calculate automatically. Weekly review cadence with Business Head.",
+            value="Fill only the white input columns (A-I, N, T). Ageing, Ageing Bucket and Escalation Flag calculate automatically. Weekly review cadence with Business Head.",
         ).font = subtle_font
 
         # Write Header Row (Row 3)
@@ -203,7 +207,7 @@ class GovernanceExcelService:
             cell.border = thin_border
             cell.alignment = center_align
             # Differentiate input vs calculated columns
-            if col_idx in [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 15, 18, 19]:
+            if col_idx in [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 15, 18, 19, 20]:
                 cell.font = white_font
                 cell.fill = navy_fill
             else:
@@ -246,13 +250,14 @@ class GovernanceExcelService:
                     act.weeks_in_review,
                     act.last_update or "",
                     week_val,
+                    act.bucket or "",
                 ]
 
                 for c_idx, val in enumerate(row_data, start=1):
                     c = ws_tracker.cell(row=idx, column=c_idx, value=val)
                     c.font = regular_font
                     c.border = thin_border
-                    if c_idx in [1, 2, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19]:
+                    if c_idx in [1, 2, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20]:
                         c.alignment = center_align
                     else:
                         c.alignment = left_align
@@ -283,6 +288,7 @@ class GovernanceExcelService:
                 0,
                 "Initial review scheduled",
                 f"Week {timezone.localdate().isocalendar()[1]}",
+                "Audit Finding",
             ]
             for c_idx, val in enumerate(sample_row, start=1):
                 c = ws_tracker.cell(row=4, column=c_idx, value=val)
@@ -312,7 +318,7 @@ class GovernanceExcelService:
             "A": 16, "B": 10, "C": 18, "D": 40, "E": 34, "F": 22,
             "G": 14, "H": 18, "I": 16, "J": 14, "K": 12, "L": 18,
             "M": 14, "N": 15, "O": 12, "P": 25, "Q": 16, "R": 32,
-            "S": 16,
+            "S": 16, "T": 18,
         }
         for col_letter, width in col_widths.items():
             ws_tracker.column_dimensions[col_letter].width = width
@@ -656,6 +662,8 @@ class GovernanceExcelService:
                     header_str = str(cell.value).strip().lower()
                     for field_name, aliases in cls.FIELD_ALIASES.items():
                         if field_name not in col_field_map:
+                            if field_name == "bucket" and "ageing" in header_str:
+                                continue
                             if header_str in aliases:
                                 col_field_map[field_name] = col_idx
                                 break
@@ -673,6 +681,9 @@ class GovernanceExcelService:
                         if field_name not in col_field_map:
                             # Weeks in Review is a duration metric, never the reporting week identifier
                             if field_name == "reporting_week" and ("weeks in review" in header_str or "in review" in header_str):
+                                continue
+                            # Ageing Bucket is a duration metric, never the classification Bucket
+                            if field_name == "bucket" and "ageing" in header_str:
                                 continue
                             for alias in aliases:
                                 if alias in header_str and len(alias) > best_len:
@@ -846,9 +857,15 @@ class GovernanceExcelService:
 
             # 13. Action ID (if updating existing)
             action_id_raw = get_row_val(row_cells, "action_id")
-            action_id = str(action_id_raw).strip() if action_id_raw else ""
+            action_id = str(action_id_raw).strip() if action_id_raw is not None else ""
+            if action_id.isdigit() and not GovernanceActionPoint.objects.filter(action_id=action_id).exists():
+                action_id = ""
 
-            # 14. MANDATORY EVIDENCE CHECK ON CLOSURE
+            # 14. Bucket (Classification)
+            bucket_raw = get_row_val(row_cells, "bucket")
+            bucket = str(bucket_raw).strip() if bucket_raw is not None else ""
+
+            # 15. MANDATORY EVIDENCE CHECK ON CLOSURE
             if status == "Closed" and action_id:
                 existing_act = GovernanceActionPoint.objects.filter(action_id=action_id).first()
                 if existing_act:
@@ -877,6 +894,7 @@ class GovernanceExcelService:
                     "actual_closure_date": actual_closure_date,
                     "last_update": last_update,
                     "reporting_week": reporting_week,
+                    "bucket": bucket,
                 })
 
         if row_errors:
@@ -912,6 +930,8 @@ class GovernanceExcelService:
                     existing.last_update = rec["last_update"]
                     if rec["reporting_week"]:
                         existing.reporting_week = rec["reporting_week"]
+                    if rec.get("bucket"):
+                        existing.bucket = rec["bucket"]
                     existing.save()
                     action_item = existing
                     updated_count += 1
@@ -939,6 +959,7 @@ class GovernanceExcelService:
                         actual_closure_date=rec["actual_closure_date"],
                         last_update=rec["last_update"],
                         reporting_week=rec["reporting_week"],
+                        bucket=rec.get("bucket", ""),
                         created_by=user,
                     )
                     action_item.save()

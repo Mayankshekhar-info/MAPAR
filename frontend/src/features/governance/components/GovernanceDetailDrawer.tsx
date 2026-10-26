@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import Drawer from "@mui/material/Drawer";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -15,10 +16,14 @@ import CloudUploadOutlinedIcon from "@mui/icons-material/CloudUploadOutlined";
 import DownloadOutlinedIcon from "@mui/icons-material/DownloadOutlined";
 import RateReviewOutlinedIcon from "@mui/icons-material/RateReviewOutlined";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
+import EventRepeatIcon from "@mui/icons-material/EventRepeat";
+import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
 
 import { colorTokens, radiusTokens } from "../../../app/theme/tokens";
-import { GovernanceActionPoint, GovernanceEvidenceItem } from "../types/governance.types";
+import { GovernanceActionPoint, GovernanceEvidenceItem, GovernanceWeeklyUpdate } from "../types/governance.types";
 import { governanceService } from "../api/governanceService";
+import { WeeklyProgressTimeline } from "./WeeklyProgressTimeline";
+import { SendTaskEmailModal } from "./SendTaskEmailModal";
 
 interface GovernanceDetailDrawerProps {
   open: boolean;
@@ -39,6 +44,25 @@ export const GovernanceDetailDrawer: React.FC<GovernanceDetailDrawerProps> = ({
   onUploadEvidence,
   onReviewEvidence,
 }) => {
+  const location = useLocation();
+  const [weeklyUpdates, setWeeklyUpdates] = useState<GovernanceWeeklyUpdate[]>([]);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (open && action?.id) {
+      governanceService
+        .getWeeklyUpdates(action.id)
+        .then((res) => {
+          setWeeklyUpdates(Array.isArray(res) ? res : []);
+        })
+        .catch(() => {
+          setWeeklyUpdates(action.weekly_updates || []);
+        });
+    } else {
+      setWeeklyUpdates([]);
+    }
+  }, [open, action?.id, action?.weekly_updates]);
+
   if (!action) return null;
 
   const handleDownloadFile = async (item: GovernanceEvidenceItem) => {
@@ -166,6 +190,19 @@ export const GovernanceDetailDrawer: React.FC<GovernanceDetailDrawerProps> = ({
                 color: action.priority === "High" ? "#B91C1C" : "#475569",
               }}
             />
+            {action.bucket && (
+              <Chip
+                label={action.bucket}
+                size="small"
+                sx={{
+                  fontWeight: 600,
+                  fontSize: "0.72rem",
+                  backgroundColor: "#EFF6FF",
+                  color: "#1D4ED8",
+                  border: "1px solid #DBEAFE",
+                }}
+              />
+            )}
           </Box>
           <Typography variant="caption" sx={{ color: colorTokens.text.secondary }}>
             {action.circle?.name} ({action.circle?.code}) • {action.function_area}
@@ -340,6 +377,14 @@ export const GovernanceDetailDrawer: React.FC<GovernanceDetailDrawerProps> = ({
             </Box>
             <Box>
               <Typography variant="caption" sx={{ color: colorTokens.text.muted, display: "block" }}>
+                Bucket:
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600, color: action.bucket ? colorTokens.primary.main : "inherit" }}>
+                {action.bucket || "—"}
+              </Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" sx={{ color: colorTokens.text.muted, display: "block" }}>
                 Weeks in Review:
               </Typography>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -366,6 +411,29 @@ export const GovernanceDetailDrawer: React.FC<GovernanceDetailDrawerProps> = ({
               </Box>
             </Box>
           </Box>
+        </Paper>
+
+        {/* Weekly Progress Updates History Card */}
+        <Paper
+          elevation={0}
+          sx={{
+            p: 2,
+            mb: 2.5,
+            borderRadius: radiusTokens.md,
+            border: "1px solid",
+            borderColor: colorTokens.workspace.border,
+            backgroundColor: colorTokens.workspace.surface,
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <EventRepeatIcon sx={{ color: colorTokens.primary.main, fontSize: 20 }} />
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: colorTokens.text.primary }}>
+                Weekly Progress Updates Log ({weeklyUpdates.length})
+              </Typography>
+            </Box>
+          </Box>
+          <WeeklyProgressTimeline updates={weeklyUpdates} />
         </Paper>
 
         {/* Evidence Submission & Review History Card */}
@@ -583,9 +651,23 @@ export const GovernanceDetailDrawer: React.FC<GovernanceDetailDrawerProps> = ({
           variant="outlined"
           startIcon={<CloudUploadOutlinedIcon />}
           onClick={() => onUploadEvidence(action)}
-          sx={{ flex: 1 }}
+          sx={{ flex: 1, minWidth: 120 }}
         >
           Upload Proof
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={<EmailOutlinedIcon />}
+          onClick={() => setIsEmailModalOpen(true)}
+          sx={{
+            flex: 1,
+            minWidth: 120,
+            borderColor: colorTokens.primary.main,
+            color: colorTokens.primary.main,
+            "&:hover": { backgroundColor: "#F0F9FF" },
+          }}
+        >
+          Send Email
         </Button>
         <Button
           variant="contained"
@@ -593,13 +675,21 @@ export const GovernanceDetailDrawer: React.FC<GovernanceDetailDrawerProps> = ({
           onClick={() => onReviseTarget(action)}
           sx={{
             flex: 1,
+            minWidth: 130,
             backgroundColor: colorTokens.primary.main,
             "&:hover": { backgroundColor: colorTokens.primary.dark },
           }}
         >
-          {window.location.pathname.startsWith("/audit") ? "Request Revision" : "Revise Target"}
+          {location.pathname.startsWith("/audit") ? "Request Revision" : "Revise Target"}
         </Button>
       </Box>
+
+      {/* Manual Task Email Alert Modal */}
+      <SendTaskEmailModal
+        open={isEmailModalOpen}
+        onClose={() => setIsEmailModalOpen(false)}
+        task={action}
+      />
     </Drawer>
   );
 };

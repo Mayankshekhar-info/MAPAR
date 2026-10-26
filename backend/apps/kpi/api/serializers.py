@@ -230,7 +230,9 @@ class KPIDefinitionSerializer(serializers.ModelSerializer):
                     else:
                         ret["direction"] = KPIDefinition.Direction.HIGHER_BETTER
 
-                primary_col = primary.get("achieved_data_column") or (primary.get("data_source") or {}).get("metric_field")
+                ds_obj = primary.get("data_source")
+                ds_metric = ds_obj.get("metric_field") if isinstance(ds_obj, dict) else None
+                primary_col = primary.get("achieved_data_column") or ds_metric
                 if primary_col:
                     ret["formula_expression"] = primary_col
 

@@ -1,8 +1,10 @@
+from typing import Any
 from django.contrib.auth.models import AbstractUser  # type: ignore
 from django.db import models  # type: ignore
 
 
 class User(AbstractUser):
+    objects: Any
     """MAPAR native user account mapped to accounts_user."""
 
     class Role(models.TextChoices):

@@ -44,6 +44,8 @@ class SendTestEmailSerializer(serializers.Serializer):
 
 
 class EmailDeliveryRecordSerializer(serializers.ModelSerializer):
+    triggered_by_username = serializers.SerializerMethodField()
+
     class Meta:
         model = EmailDeliveryRecord
         fields = [
@@ -63,8 +65,15 @@ class EmailDeliveryRecordSerializer(serializers.ModelSerializer):
             "sent_at",
             "error_message",
             "scheduled_slot",
+            "triggered_by",
+            "triggered_by_username",
             "created_at",
         ]
+
+    def get_triggered_by_username(self, obj):
+        if obj.triggered_by:
+            return obj.triggered_by.username
+        return ""
 
 
 class TriggerRemindersSerializer(serializers.Serializer):

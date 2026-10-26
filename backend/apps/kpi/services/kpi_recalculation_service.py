@@ -35,7 +35,7 @@ class KPIRecalculationService:
         active_kpis = list(KPIDefinition.objects.filter(is_active=True))
         direct_kpis = []
         for k in active_kpis:
-            if k.source_dataset_id == template.id:
+            if getattr(k, "source_dataset_id", None) == template.id:
                 direct_kpis.append(k)
             else:
                 p_comps = (k.presentation_config or {}).get("comparisons", [])

@@ -41,7 +41,7 @@ from apps.imports.api.serializers import (
     ImportValidationErrorSerializer,
 )
 from apps.dashboard.models import ReportingPeriod
-from apps.imports.models import UploadTemplateColumn
+from apps.imports.models import ImportBatch, UploadTemplateColumn
 
 
 def check_can_manage_uploads(user) -> bool:

@@ -27,6 +27,7 @@ import {
   SubmitTargetRevisionRequestPayload,
   ReviewTargetRevisionRequestPayload,
   RevisionRequestsListResponse,
+  SendUrgentFollowUpResponse,
 } from "../types/governance.types";
 
 export const governanceService = {
@@ -141,10 +142,11 @@ export const governanceService = {
     return res.data.bulk_result;
   },
 
-  async getHierarchyUsers(level?: string, nodeId?: number): Promise<SimpleUser[]> {
+  async getHierarchyUsers(level?: string, nodeId?: number, search?: string): Promise<SimpleUser[]> {
     const q = new URLSearchParams();
     if (level) q.set("level", level);
     if (nodeId) q.set("node_id", String(nodeId));
+    if (search) q.set("search", search);
     const res = await api.get<{ success: boolean; users: SimpleUser[] }>(`/governance/hierarchy-users/?${q.toString()}`);
     return res.data.users;
   },
@@ -169,10 +171,7 @@ export const governanceService = {
 
     const res = await api.post<{ success: boolean; evidence: GovernanceEvidenceItem; message: string }>(
       `/governance/actions/${actionId}/evidence/`,
-      formData,
-      {
-        headers: { "Content-Type": "multipart/form-data" },
-      }
+      formData
     );
     return res.data;
   },
@@ -241,11 +240,7 @@ export const governanceService = {
   async uploadExcel(file: File): Promise<ExcelUploadResponse> {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await api.post<ExcelUploadResponse>("/governance/excel/upload/", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
+    const res = await api.post<ExcelUploadResponse>("/governance/excel/upload/", formData);
     return res.data;
   },
 
@@ -270,10 +265,7 @@ export const governanceService = {
     formData.append("file", file);
     const res = await api.post<{ success: boolean; preview: WeeklyExcelPreviewData }>(
       "/governance/weekly-updates/preview-excel/",
-      formData,
-      {
-        headers: { "Content-Type": "multipart/form-data" },
-      }
+      formData
     );
     return res.data;
   },
@@ -284,10 +276,7 @@ export const governanceService = {
     if (allowRevision) formData.append("allow_revision", "true");
     const res = await api.post<WeeklyExcelUploadResponse>(
       "/governance/weekly-updates/upload-excel/",
-      formData,
-      {
-        headers: { "Content-Type": "multipart/form-data" },
-      }
+      formData
     );
     return res.data;
   },
@@ -381,5 +370,12 @@ export const governanceService = {
     );
     return res.data;
   },
+
+  async sendUrgentFollowUpEmail(actionId: number, recipientUserId?: number): Promise<SendUrgentFollowUpResponse> {
+    const payload = recipientUserId ? { recipient_user_id: recipientUserId } : {};
+    const res = await api.post<SendUrgentFollowUpResponse>(`/governance/actions/${actionId}/send-email/`, payload);
+    return res.data;
+  },
 };
+
 

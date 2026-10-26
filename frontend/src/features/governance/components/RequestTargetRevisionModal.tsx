@@ -121,7 +121,7 @@ export const RequestTargetRevisionModal: React.FC<RequestTargetRevisionModalProp
             </Typography>
 
             <Typography variant="caption" sx={{ color: colorTokens.text.secondary, display: "block" }}>
-              Circle: <strong>{action.circle.name}</strong> &bull; Owner: <strong>{action.owner?.full_name || action.owner_name_override || "Unassigned"}</strong>
+              Circle: <strong>{action.circle?.name || "Corporate / All Circles"}</strong> &bull; Owner: <strong>{action.owner?.full_name || action.owner_name_override || "Unassigned"}</strong>
             </Typography>
 
             <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5, mt: 1.5, pt: 1.5, borderTop: `1px solid ${colorTokens.workspace.border}` }}>

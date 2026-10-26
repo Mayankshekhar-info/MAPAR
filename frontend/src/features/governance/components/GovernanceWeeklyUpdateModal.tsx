@@ -517,24 +517,21 @@ export const GovernanceWeeklyUpdateModal: React.FC<GovernanceWeeklyUpdateModalPr
             </Box>
           </Box>
 
-          {/* Revision Checkbox */}
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={allowRevision}
-                onChange={(e) => setAllowRevision(e.target.checked)}
-                size="small"
-                color="primary"
-                sx={{ p: 0.5, mr: 1 }}
-              />
-            }
-            label={
-              <Typography sx={{ color: colorTokens.text.secondary, fontSize: "0.82rem" }}>
-                Revise existing report if already submitted for this week
-              </Typography>
-            }
-            sx={{ m: 0 }}
-          />
+          {/* Multiple updates governance notice */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              p: 1.25,
+              borderRadius: radiusTokens.sm,
+              backgroundColor: `${colorTokens.primary.main}0A`,
+              border: `1px solid ${colorTokens.primary.main}20`,
+            }}
+          >
+            <Typography sx={{ color: colorTokens.text.secondary, fontSize: "0.82rem" }}>
+              <strong>Multi-Update Support:</strong> Multiple weekly updates are permitted. Each update is permanently preserved as a separate entry in the Governance audit trail.
+            </Typography>
+          </Box>
 
           {/* Action Buttons & Target Info */}
           <Box
@@ -605,19 +602,19 @@ export const GovernanceWeeklyUpdateModal: React.FC<GovernanceWeeklyUpdateModalPr
                   display: "flex",
                   flexDirection: "column",
                   gap: 1.5,
-                  maxHeight: 260,
+                  maxHeight: 280,
                   overflowY: "auto",
                   pr: 0.5,
                 }}
               >
-                {history.map((upd) => (
+                {[...history].reverse().map((upd, idx) => (
                   <Box
                     key={upd.id}
                     sx={{
                       p: 1.75,
                       borderRadius: radiusTokens.sm,
-                      backgroundColor: colorTokens.workspace.background,
-                      border: `1px solid ${colorTokens.workspace.border}`,
+                      backgroundColor: idx === 0 ? "#FFFFFF" : colorTokens.workspace.background,
+                      border: `1px solid ${idx === 0 ? colorTokens.primary.main : colorTokens.workspace.border}`,
                     }}
                   >
                     <Box
@@ -630,20 +627,46 @@ export const GovernanceWeeklyUpdateModal: React.FC<GovernanceWeeklyUpdateModalPr
                         gap: 1,
                       }}
                     >
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
                         <Typography sx={{ fontWeight: 700, fontSize: "0.85rem", color: colorTokens.primary.main }}>
                           {upd.reporting_week}
                         </Typography>
-                        <Typography sx={{ fontSize: "0.78rem", color: colorTokens.text.muted }}>
-                          · {formatDateDisplay(upd.submitted_at || upd.updated_at)}
+                        {idx === 0 && (
+                          <Chip
+                            label="LATEST"
+                            size="small"
+                            sx={{
+                              height: 18,
+                              fontSize: "0.62rem",
+                              fontWeight: 800,
+                              backgroundColor: `${colorTokens.primary.main}18`,
+                              color: colorTokens.primary.main,
+                            }}
+                          />
+                        )}
+                        {upd.revision_number > 1 && (
+                          <Chip
+                            label={`Week Entry #${upd.revision_number}`}
+                            size="small"
+                            sx={{ height: 18, fontSize: "0.62rem", fontWeight: 700, backgroundColor: "#EEF2F6" }}
+                          />
+                        )}
+                        <Typography sx={{ fontSize: "0.75rem", color: colorTokens.text.muted }}>
+                          · {new Date(upd.submitted_at || upd.updated_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}
                         </Typography>
                       </Box>
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <Typography sx={{ fontWeight: 700, fontSize: "0.8rem", color: colorTokens.text.primary }}>
-                          {upd.progress_percent}%
-                        </Typography>
+                        {upd.previous_progress_percent !== undefined && upd.previous_progress_percent !== null && upd.previous_progress_percent !== upd.progress_percent ? (
+                          <Typography sx={{ fontWeight: 700, fontSize: "0.8rem", color: colorTokens.primary.main }}>
+                            {upd.previous_progress_percent}% → {upd.progress_percent}%
+                          </Typography>
+                        ) : (
+                          <Typography sx={{ fontWeight: 700, fontSize: "0.8rem", color: colorTokens.text.primary }}>
+                            {upd.progress_percent}%
+                          </Typography>
+                        )}
                         <Chip
-                          label={upd.status}
+                          label={upd.previous_status && upd.previous_status !== upd.status ? `${upd.previous_status} → ${upd.status}` : upd.status}
                           size="small"
                           sx={{
                             height: 20,
@@ -669,6 +692,9 @@ export const GovernanceWeeklyUpdateModal: React.FC<GovernanceWeeklyUpdateModalPr
                         Next: {upd.next_week_plan}
                       </Typography>
                     )}
+                    <Typography variant="caption" sx={{ display: "block", color: colorTokens.text.muted, fontSize: "0.72rem", mt: 0.5 }}>
+                      Updated by {upd.submitted_by?.full_name || upd.submitted_by?.username || action.owner?.full_name || "Owner"}
+                    </Typography>
                   </Box>
                 ))}
               </Box>

@@ -32,6 +32,7 @@ export interface GovernanceEvidenceItem {
   action_id: string;
   action_point_title: string;
   circle_code?: string;
+  bucket?: string;
   version: number;
   reporting_week?: string;
   title: string;
@@ -52,11 +53,15 @@ export interface GovernanceWeeklyUpdate {
   action_point: number;
   action_id: string;
   action_point_title: string;
+  bucket?: string;
   reporting_week: string;
   week_start_date?: string | null;
   week_end_date?: string | null;
   work_completed: string;
   progress_percent: number;
+  previous_progress_percent?: number | null;
+  previous_status?: string | null;
+  update_sequence?: number;
   achievements?: string;
   blockers?: string;
   next_week_plan?: string;
@@ -80,6 +85,7 @@ export interface GovernanceActionPoint {
   department?: any;
   sub_department?: any;
   function_area: string;
+  bucket?: string;
   action_point: string;
   key_deliverable: string;
   owner?: SimpleUser | null;
@@ -104,6 +110,7 @@ export interface GovernanceActionPoint {
   last_update: string;
   revisions?: GovernanceTargetRevision[];
   evidence_items?: GovernanceEvidenceItem[];
+  weekly_updates?: GovernanceWeeklyUpdate[];
   created_by?: SimpleUser | null;
   created_at: string;
   updated_at: string;
@@ -193,6 +200,7 @@ export interface TimelinePointAction {
   title: string;
   owner: string;
   circle: string;
+  bucket?: string;
   priority: string;
 }
 
@@ -210,6 +218,7 @@ export interface UrgentRiskItem {
   action_id: string;
   action_point: string;
   owner_name: string;
+  bucket?: string;
   circle_name: string;
   circle_code?: string;
   status: string;
@@ -297,6 +306,7 @@ export interface GovernanceMetadata {
   priorities: string[];
   evidence_statuses: string[];
   hierarchy_levels?: HierarchyLevelOption[];
+  buckets?: string[];
   available_weeks?: string[];
 }
 
@@ -317,6 +327,7 @@ export interface GovernanceFilterParams {
   reporting_week?: string;
   start_date?: string;
   end_date?: string;
+  bucket?: string;
   ageing_bucket?: string;
   page?: number;
   page_size?: number;
@@ -341,6 +352,7 @@ export interface CreateActionPayload {
   department_id?: number | null;
   sub_department_id?: number | null;
   function_area: string;
+  bucket?: string;
   action_point: string;
   key_deliverable?: string;
   owner_id?: number | null;
@@ -359,6 +371,7 @@ export interface UpdateActionPayload {
   hierarchy_node_id?: number | null;
   hierarchy_path?: string;
   function_area?: string;
+  bucket?: string;
   action_point?: string;
   key_deliverable?: string;
   owner_id?: number | null;
@@ -549,4 +562,14 @@ export interface RevisionRequestsListResponse {
   page_size: number;
   results: GovernanceTargetRevisionRequest[];
 }
+
+export interface SendUrgentFollowUpResponse {
+  success: boolean;
+  message: string;
+  action_id: string;
+  recipient_email?: string;
+  recipient_name?: string;
+  delivery_status?: string;
+}
+
 

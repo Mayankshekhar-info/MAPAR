@@ -13,6 +13,7 @@ export { useAuth } from "./hooks/useAuth";
 export { useLogin } from "./hooks/useLogin";
 export { useAuthStore } from "./hooks/useAuthStore";
 export { authService } from "./services/authService";
+export { PasswordResetDialog } from "./components/PasswordResetDialog";
 export * from "./types/auth.types";
 export * from "./schemas/login.schema";
 

@@ -11,7 +11,9 @@ import { GovernanceTargetTimeline } from "../components/GovernanceTargetTimeline
 import { GovernanceFollowUpSection } from "../components/GovernanceFollowUpSection";
 import { GovernanceExecutionCard } from "../components/GovernanceExecutionCard";
 import { GovernancePeriodControl } from "../components/GovernancePeriodControl";
+import { WeeklyProgressTimeline } from "../components/WeeklyProgressTimeline";
 import { MyProgressMetrics, GovernanceActionPoint, GovernanceMetrics, OwnerDistribution } from "../types/governance.types";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 describe("GovernanceOwnerDashboardCard Component", () => {
   const sampleProgress: MyProgressMetrics = {
@@ -148,7 +150,7 @@ describe("GovernanceMetricsBar Component", () => {
 
     expect(screen.getByText("Total Actions")).toBeInTheDocument();
     expect(screen.getByText("Open")).toBeInTheDocument();
-    expect(screen.getByText("Work in Progress")).toBeInTheDocument();
+    expect(screen.getByText("In Progress")).toBeInTheDocument();
     expect(screen.getByText("Closed")).toBeInTheDocument();
     expect(screen.getByText("Overdue")).toBeInTheDocument();
 
@@ -369,10 +371,17 @@ describe("GovernanceTargetTimeline Component", () => {
 });
 
 describe("GovernanceFollowUpSection Component", () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+
+  const renderWithClient = (ui: React.ReactElement) =>
+    render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+
   it("renders clean zero risk empty state when urgentItems is empty", () => {
     const handleSelectAction = vi.fn();
 
-    render(
+    renderWithClient(
       <GovernanceFollowUpSection
         urgentItems={[]}
         onSelectAction={handleSelectAction}
@@ -382,18 +391,67 @@ describe("GovernanceFollowUpSection Component", () => {
     expect(screen.getByText("Actionable Risks & Urgent Follow-up")).toBeInTheDocument();
     expect(screen.getByText("Zero Urgent Risks")).toBeInTheDocument();
   });
+
+  it("renders urgent task items with Inspect and Send Email action buttons", () => {
+    const handleSelectAction = vi.fn();
+    const urgentItems = [
+      {
+        id: 101,
+        action_id: "ACT-00101",
+        action_point: "Perform critical compliance review",
+        owner_name: "Rahul Verma",
+        circle_name: "Circle Delhi",
+        circle_code: "DEL",
+        status: "Open",
+        priority: "High",
+        current_target_date: "2026-10-25",
+        is_overdue: true,
+        days_overdue: 3,
+        progress_percent: 25,
+        evidence_status: "Pending Review",
+      },
+    ];
+
+    renderWithClient(
+      <GovernanceFollowUpSection
+        urgentItems={urgentItems}
+        onSelectAction={handleSelectAction}
+      />
+    );
+
+    expect(screen.getByText("ACT-00101")).toBeInTheDocument();
+    expect(screen.getByText("Perform critical compliance review")).toBeInTheDocument();
+    expect(screen.getByText("Rahul Verma")).toBeInTheDocument();
+    expect(screen.getByText("3d overdue")).toBeInTheDocument();
+
+    // Verify both Inspect and Send Email buttons are rendered
+    const inspectBtn = screen.getByRole("button", { name: /Inspect/i });
+    const sendEmailBtn = screen.getByRole("button", { name: /Send Email/i });
+    expect(inspectBtn).toBeInTheDocument();
+    expect(sendEmailBtn).toBeInTheDocument();
+
+    // Clicking Inspect triggers onSelectAction with the task ID
+    fireEvent.click(inspectBtn);
+    expect(handleSelectAction).toHaveBeenCalledWith(101);
+  });
 });
 
 describe("GovernanceExecutionCard Component", () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+
   it("renders tabbed deadlines card and allows switching between timeline and urgent risks", () => {
     const handleSelectAction = vi.fn();
 
     render(
-      <GovernanceExecutionCard
-        timeline={[]}
-        urgentItems={[]}
-        onSelectAction={handleSelectAction}
-      />
+      <QueryClientProvider client={queryClient}>
+        <GovernanceExecutionCard
+          timeline={[]}
+          urgentItems={[]}
+          onSelectAction={handleSelectAction}
+        />
+      </QueryClientProvider>
     );
 
     expect(screen.getByText(/Target Timeline \(0\)/)).toBeInTheDocument();
@@ -480,6 +538,99 @@ describe("GovernancePeriodControl Component", () => {
     expect(handleChangePeriod).toHaveBeenCalledWith({ reporting_week: "Week 43" });
   });
 });
+
+describe("Governance Bucket Field UI Integration", () => {
+  const sampleActionWithBucket: GovernanceActionPoint = {
+    id: 101,
+    action_id: "ACT-RAJ-101",
+    circle: { id: 1, name: "Rajasthan Circle", code: "RAJ", region: "North" },
+    function_area: "Operations",
+    bucket: "Critical Infrastructure",
+    action_point: "Deploy backup generator fuel sensors",
+    key_deliverable: "Sensors calibrated and live",
+    owner: { id: 1, username: "mgupta", full_name: "Mayank Gupta", email: "mgupta@mapar.com", role: "Auditee" },
+    owner_name_override: "Mayank Gupta",
+    raised_date: "2026-10-01",
+    target_closure_date: "2026-10-25",
+    current_target_date: "2026-10-25",
+    status: "Open",
+    priority: "High",
+    evidence_required: true,
+    evidence_status: "Pending Review",
+    revision_count: 0,
+    ageing_days: 10,
+    ageing_bucket: "8-15 Days",
+    weeks_in_review: 2,
+    is_escalated: false,
+    is_overdue: false,
+    last_update: "Sensors arrived on site",
+    created_at: "2026-10-01T10:00:00Z",
+    updated_at: "2026-10-05T10:00:00Z",
+  };
+
+  it("renders Bucket chip in GovernanceFollowUpSection urgent tasks table", () => {
+    const handleSelectAction = vi.fn();
+    const urgentItems = [
+      {
+        id: 101,
+        action_id: "ACT-RAJ-101",
+        action_point: "Deploy backup generator fuel sensors",
+        bucket: "Critical Infrastructure",
+        owner_name: "Mayank Gupta",
+        circle_name: "Rajasthan Circle",
+        circle_code: "RAJ",
+        status: "Open",
+        priority: "High",
+        current_target_date: "2026-10-25",
+        is_overdue: true,
+        days_overdue: 2,
+        progress_percent: 45,
+        evidence_status: "Pending Review",
+      },
+    ];
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <GovernanceFollowUpSection
+          urgentItems={urgentItems}
+          onSelectAction={handleSelectAction}
+        />
+      </QueryClientProvider>
+    );
+
+    // Verify Bucket chip is displayed
+    expect(screen.getByText("Critical Infrastructure")).toBeInTheDocument();
+  });
+
+  it("renders Bucket badge in WeeklyProgressTimeline updates", () => {
+    const updates = [
+      {
+        id: 201,
+        action_point: 101,
+        action_id: "ACT-RAJ-101",
+        action_point_title: "Deploy backup generator fuel sensors",
+        bucket: "Statutory Compliance",
+        reporting_week: "Week 42",
+        work_completed: "Installed calibration modules",
+        progress_percent: 60,
+        status: "WIP" as const,
+        submitted_at: "2026-10-20T10:00:00Z",
+        updated_at: "2026-10-20T10:00:00Z",
+        revision_number: 1,
+      },
+    ];
+
+    render(<WeeklyProgressTimeline updates={updates} />);
+
+    expect(screen.getByText("Bucket: Statutory Compliance")).toBeInTheDocument();
+    expect(screen.getByText("Week 42")).toBeInTheDocument();
+  });
+});
+
 
 
 

@@ -8,6 +8,7 @@ class ImportBatch(models.Model):
     circle_id: Optional[int]
     reporting_period_id: Optional[int]
     staged_rows: Any
+    validation_errors: Any
     """
     Immutable import audit batch tracking an uploaded file, validation metrics, and commit status.
     """
@@ -121,3 +122,16 @@ class ImportBatch(models.Model):
 
     def __str__(self):
         return f"{self.batch_id} - {self.template_version} [{self.status}]"
+
+    @property
+    def template(self):
+        return self.template_version.template if self.template_version else None
+
+    @property
+    def uploaded_at(self):
+        return self.created_at
+
+    @property
+    def imported_rows(self) -> int:
+        return self.valid_rows
+
