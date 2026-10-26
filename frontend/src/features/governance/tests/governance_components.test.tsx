@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { GovernanceOwnerDashboardCard } from "../components/GovernanceOwnerDashboardCard";
 import { MandatoryEvidenceClosureModal } from "../components/MandatoryEvidenceClosureModal";
@@ -12,8 +12,11 @@ import { GovernanceFollowUpSection } from "../components/GovernanceFollowUpSecti
 import { GovernanceExecutionCard } from "../components/GovernanceExecutionCard";
 import { GovernancePeriodControl } from "../components/GovernancePeriodControl";
 import { WeeklyProgressTimeline } from "../components/WeeklyProgressTimeline";
+import { ActionOwnerTasksPage } from "../pages/ActionOwnerTasksPage";
+import { governanceService } from "../api/governanceService";
 import { MyProgressMetrics, GovernanceActionPoint, GovernanceMetrics, OwnerDistribution } from "../types/governance.types";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 describe("GovernanceOwnerDashboardCard Component", () => {
   const sampleProgress: MyProgressMetrics = {
@@ -297,6 +300,31 @@ describe("GovernanceStatusMatrix Component", () => {
 
     expect(screen.getByText("Amit Kumar")).toBeInTheDocument();
     expect(screen.getByText("AK")).toBeInTheDocument();
+  });
+
+
+
+  it("triggers onOwnerNavigate when an action owner is clicked in By Owner view", () => {
+    const handleCellClick = vi.fn();
+    const handleOwnerNavigate = vi.fn();
+    render(
+      <GovernanceStatusMatrix
+        metrics={sampleMetrics}
+        onCellClick={handleCellClick}
+        onOwnerNavigate={handleOwnerNavigate}
+      />
+    );
+
+    const byOwnerBtn = screen.getByText("By Owner");
+    fireEvent.click(byOwnerBtn);
+
+    const ownerName = screen.getByText("Amit Kumar");
+    expect(ownerName).toBeInTheDocument();
+
+    fireEvent.click(ownerName);
+    expect(handleOwnerNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({ owner_name: "Amit Kumar" })
+    );
   });
 });
 
@@ -630,6 +658,126 @@ describe("Governance Bucket Field UI Integration", () => {
     expect(screen.getByText("Week 42")).toBeInTheDocument();
   });
 });
+
+describe("ActionOwnerTasksPage Component", () => {
+  it("renders owner banner, KPI cards, and assigned tasks from API", async () => {
+    vi.spyOn(governanceService, "getActions").mockResolvedValue({
+      success: true,
+      count: 1,
+      total_pages: 1,
+      current_page: 1,
+      page_size: 150,
+      results: [
+        {
+          id: 101,
+          action_id: "ACT-00101",
+          circle: { id: 1, name: "Punjab" },
+          function_area: "Operations",
+          action_point: "Quarterly Safety Protocol Review",
+          key_deliverable: "Inspection checklist",
+          owner: { id: 5, first_name: "Rahul", last_name: "Sharma", username: "rsharma" },
+          status: "Open",
+          priority: "High",
+          current_progress_percent: 40,
+          current_target_date: "2026-11-15",
+          target_closure_date: "2026-11-15",
+          revision_count: 0,
+          is_overdue: false,
+          days_overdue: 0,
+        } as any,
+      ],
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/governance/owners/5/tasks?name=Rahul%20Sharma"]}>
+        <Routes>
+          <Route path="/governance/owners/:ownerId/tasks" element={<ActionOwnerTasksPage mode="governance" />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect((await screen.findAllByText(/Rahul Sharma/i)).length).toBeGreaterThan(0);
+    expect(screen.getByText("ACT-00101")).toBeInTheDocument();
+    expect(screen.getByText("Quarterly Safety Protocol Review")).toBeInTheDocument();
+    expect(screen.getByText("Back to Action Status Matrix")).toBeInTheDocument();
+
+    // Verify Send Email button is rendered in the owner summary/header area
+    const sendEmailBtn = screen.getByRole("button", { name: /Send Email/i });
+    expect(sendEmailBtn).toBeInTheDocument();
+  });
+
+  it("opens SendOwnerEmailModal and displays eligible tasks preview when Send Email is clicked", async () => {
+    vi.spyOn(governanceService, "getActions").mockResolvedValue({
+      success: true,
+      count: 2,
+      total_pages: 1,
+      current_page: 1,
+      page_size: 150,
+      results: [
+        {
+          id: 101,
+          action_id: "ACT-00101",
+          circle: { id: 1, name: "Punjab" },
+          function_area: "Operations",
+          action_point: "Quarterly Safety Protocol Review",
+          owner: { id: 5, full_name: "Rahul Sharma", email: "rahul@example.com" },
+          status: "Open",
+          priority: "High",
+          current_progress_percent: 40,
+          current_target_date: "2026-11-15",
+          target_closure_date: "2026-11-15",
+        } as any,
+        {
+          id: 102,
+          action_id: "ACT-00102",
+          circle: { id: 1, name: "Punjab" },
+          function_area: "Operations",
+          action_point: "Past Completed Audit",
+          owner: { id: 5, full_name: "Rahul Sharma", email: "rahul@example.com" },
+          status: "Closed",
+          priority: "Medium",
+          current_progress_percent: 100,
+          current_target_date: "2026-10-15",
+          target_closure_date: "2026-10-15",
+        } as any,
+      ],
+    });
+
+    vi.spyOn(governanceService, "getOwnerEmailPreview").mockResolvedValue({
+      success: true,
+      owner_id: 5,
+      recipient_name: "Rahul Sharma",
+      recipient_email: "rahul@example.com",
+      has_valid_email: true,
+      eligible_task_count: 1,
+      action_ids: ["ACT-00101"],
+      closed_tasks_excluded_count: 1,
+      overdue_count: 0,
+      high_priority_count: 1,
+      has_eligible_tasks: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/governance/owners/5/tasks?name=Rahul%20Sharma"]}>
+        <Routes>
+          <Route path="/governance/owners/:ownerId/tasks" element={<ActionOwnerTasksPage mode="governance" />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const sendEmailBtn = await screen.findByRole("button", { name: /Send Email/i });
+    fireEvent.click(sendEmailBtn);
+
+    // Modal opens and shows preview details
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText(/Send Consolidated Action Tasks Email/i)).toBeInTheDocument();
+    expect(within(dialog).getByText("rahul@example.com")).toBeInTheDocument();
+    expect(within(dialog).getByText("ELIGIBLE ACTIVE TASKS")).toBeInTheDocument();
+    expect(within(dialog).getByText("CLOSED TASKS EXCLUDED")).toBeInTheDocument();
+  });
+});
+
 
 
 

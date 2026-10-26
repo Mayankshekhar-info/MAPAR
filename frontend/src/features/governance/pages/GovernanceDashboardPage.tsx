@@ -694,6 +694,8 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
             activeOwnerId={filters.owner_id}
             activeStatus={filters.status}
             activeOverdue={filters.is_overdue}
+            reportingWeek={filters.reporting_week}
+            mode={effectiveMode}
             onCellClick={handleMatrixCellClick}
           />
 

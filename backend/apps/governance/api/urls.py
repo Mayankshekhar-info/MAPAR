@@ -28,9 +28,17 @@ from apps.governance.api.views import (
     GovernanceRevisionRequestListView,
     GovernanceRevisionRequestReviewView,
     GovernanceActionSendEmailView,
+    GovernanceStatusMatrixEmailPreviewView,
+    GovernanceStatusMatrixSendEmailView,
+    GovernanceOwnerEmailPreviewView,
+    GovernanceOwnerSendEmailView,
 )
 
 urlpatterns = [
+    path("status-matrix/email-preview/", GovernanceStatusMatrixEmailPreviewView.as_view(), name="governance-status-matrix-email-preview"),
+    path("status-matrix/send-emails/", GovernanceStatusMatrixSendEmailView.as_view(), name="governance-status-matrix-send-emails"),
+    path("owners/<int:owner_id>/email-preview/", GovernanceOwnerEmailPreviewView.as_view(), name="governance-owner-email-preview"),
+    path("owners/<int:owner_id>/send-email/", GovernanceOwnerSendEmailView.as_view(), name="governance-owner-send-email"),
     path("actions/", GovernanceActionPointListView.as_view(), name="governance-actions-list-create"),
     path("actions/bulk-update/", GovernanceActionBulkUpdateView.as_view(), name="governance-actions-bulk-update"),
     path("actions/<int:pk>/", GovernanceActionPointDetailView.as_view(), name="governance-action-detail"),

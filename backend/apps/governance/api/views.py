@@ -1016,5 +1016,120 @@ class GovernanceActionSendEmailView(APIView):
         }, status=resp_status)
 
 
+class GovernanceStatusMatrixEmailPreviewView(APIView):
+    """
+    GET /api/v1/governance/status-matrix/email-preview/
+    Returns distinct recipient counts and task summary before sending bulk emails.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.notifications.services.status_matrix_email_service import StatusMatrixEmailService
+
+        reporting_week = request.query_params.get("reporting_week")
+        circle_id_param = request.query_params.get("circle_id")
+        circle_id = int(circle_id_param) if circle_id_param and circle_id_param.isdigit() else None
+
+        preview = StatusMatrixEmailService.get_matrix_email_preview(
+            user=request.user,
+            reporting_week=reporting_week,
+            circle_id=circle_id,
+        )
+        return Response({"success": True, **preview})
+
+
+class GovernanceStatusMatrixSendEmailView(APIView):
+    """
+    POST /api/v1/governance/status-matrix/send-emails/
+    Dispatches 1 consolidated email per eligible Action Owner containing all their assigned tasks.
+    Enforces authorization, deduplication, and full audit logging.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if getattr(request.user, "role", None) == User.Role.VIEWER:
+            return Response(
+                {"success": False, "message": "Viewers do not have permission to trigger bulk status matrix emails."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from apps.notifications.services.status_matrix_email_service import StatusMatrixEmailService
+
+        reporting_week = request.data.get("reporting_week")
+        circle_id = request.data.get("circle_id")
+        if circle_id is not None:
+            try:
+                circle_id = int(circle_id)
+            except (ValueError, TypeError):
+                circle_id = None
+
+        override_recipient_email = request.data.get("override_recipient_email")
+        dry_run = request.data.get("dry_run", False)
+
+        result = StatusMatrixEmailService.send_matrix_consolidated_emails(
+            triggered_by=request.user,
+            reporting_week=reporting_week,
+            circle_id=circle_id,
+            override_recipient_email=override_recipient_email,
+            dry_run=dry_run,
+        )
+
+        resp_status = status.HTTP_200_OK if result["success"] else status.HTTP_400_BAD_REQUEST
+        return Response(result, status=resp_status)
+
+
+class GovernanceOwnerEmailPreviewView(APIView):
+    """
+    GET /api/v1/governance/owners/<int:owner_id>/email-preview/
+    Returns eligible task count, closed exclusion count, and owner recipient info before sending.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, owner_id):
+        from apps.notifications.services.status_matrix_email_service import StatusMatrixEmailService
+
+        owner_name = request.query_params.get("name")
+        preview = StatusMatrixEmailService.get_owner_email_preview(
+            user=request.user,
+            owner_id=owner_id,
+            owner_name=owner_name,
+        )
+        return Response({"success": True, **preview})
+
+
+class GovernanceOwnerSendEmailView(APIView):
+    """
+    POST /api/v1/governance/owners/<int:owner_id>/send-email/
+    Dispatches 1 consolidated email containing all eligible non-closed tasks for this owner.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, owner_id):
+        if getattr(request.user, "role", None) == User.Role.VIEWER:
+            return Response(
+                {"success": False, "message": "Viewers do not have permission to trigger action owner emails."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        from apps.notifications.services.status_matrix_email_service import StatusMatrixEmailService
+
+        owner_name = request.data.get("owner_name") or request.query_params.get("name")
+        override_recipient_email = request.data.get("override_recipient_email")
+        dry_run = request.data.get("dry_run", False)
+
+        result = StatusMatrixEmailService.send_owner_consolidated_email(
+            triggered_by=request.user,
+            owner_id=owner_id,
+            owner_name=owner_name,
+            override_recipient_email=override_recipient_email,
+            dry_run=dry_run,
+        )
+
+        resp_status = status.HTTP_200_OK if result["success"] else status.HTTP_400_BAD_REQUEST
+        return Response(result, status=resp_status)
+
+
+
+
 
 

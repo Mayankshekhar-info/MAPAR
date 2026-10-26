@@ -11,7 +11,7 @@ import { AccessScopesPage } from "../../features/permissions";
 import { KPIRegistryPage } from "../../features/kpi";
 // Master Data section disabled
 // import { MasterDataPage } from "../../features/master-data";
-import { GovernanceDashboardPage, TaskDetailPage } from "../../features/governance";
+import { GovernanceDashboardPage, TaskDetailPage, ActionOwnerTasksPage } from "../../features/governance";
 import { NotificationsAdminPage } from "../../features/notifications";
 import { ModulePlaceholderPage } from "../layout/ModulePlaceholderPage";
 
@@ -82,12 +82,20 @@ export const router = createBrowserRouter([
         element: <GovernanceDashboardPage mode="governance" />,
       },
       {
+        path: "governance/owners/:ownerId/tasks",
+        element: <ActionOwnerTasksPage mode="governance" />,
+      },
+      {
         path: "governance/tasks/:id",
         element: <TaskDetailPage />,
       },
       {
         path: "audit",
         element: <GovernanceDashboardPage mode="audit" />,
+      },
+      {
+        path: "audit/owners/:ownerId/tasks",
+        element: <ActionOwnerTasksPage mode="audit" />,
       },
       {
         path: "audit/tasks/:id",

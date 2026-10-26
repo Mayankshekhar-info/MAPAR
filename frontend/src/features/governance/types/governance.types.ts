@@ -314,6 +314,7 @@ export interface GovernanceFilterParams {
   search?: string;
   circle_id?: number | null;
   owner_id?: number | null;
+  owner_name?: string;
   status?: string;
   evidence_status?: string;
   view_mode?: "all" | "my_tasks" | "created_by" | "created_by_me" | "missing_weekly" | "evidence_review" | "revision_requests";
@@ -571,5 +572,85 @@ export interface SendUrgentFollowUpResponse {
   recipient_name?: string;
   delivery_status?: string;
 }
+
+export interface StatusMatrixEmailRecipient {
+  recipient_name: string;
+  recipient_email: string;
+  task_count: number;
+  action_ids: string[];
+  overdue_count: number;
+  high_priority_count: number;
+}
+
+export interface StatusMatrixEmailPreviewResponse {
+  success: boolean;
+  distinct_recipients_count: number;
+  total_tasks_count: number;
+  total_overdue_count: number;
+  total_high_priority_count: number;
+  recipients: StatusMatrixEmailRecipient[];
+}
+
+export interface StatusMatrixEmailSendPayload {
+  reporting_week?: string;
+  circle_id?: number | null;
+  override_recipient_email?: string;
+  dry_run?: boolean;
+}
+
+export interface StatusMatrixEmailSendResult {
+  recipient_email: string;
+  recipient_name: string;
+  task_count: number;
+  action_ids: string[];
+  status: "SENT" | "FAILED" | "SKIPPED" | "DRY_RUN";
+  message?: string;
+  error?: string;
+}
+
+export interface StatusMatrixEmailSendResponse {
+  success: boolean;
+  total_recipients: number;
+  total_tasks: number;
+  sent_count: number;
+  failed_count: number;
+  skipped_count: number;
+  results: StatusMatrixEmailSendResult[];
+  message: string;
+}
+
+export interface OwnerEmailPreviewResponse {
+  success: boolean;
+  owner_id: number;
+  recipient_name: string;
+  recipient_email: string;
+  has_valid_email: boolean;
+  eligible_task_count: number;
+  action_ids: string[];
+  closed_tasks_excluded_count: number;
+  overdue_count: number;
+  high_priority_count: number;
+  has_eligible_tasks: boolean;
+  no_eligible_reason?: string;
+}
+
+export interface OwnerEmailSendPayload {
+  owner_name?: string;
+  override_recipient_email?: string;
+  dry_run?: boolean;
+}
+
+export interface OwnerEmailSendResponse {
+  success: boolean;
+  message: string;
+  recipient_email?: string;
+  recipient_name?: string;
+  task_count?: number;
+  closed_excluded_count?: number;
+  action_ids?: string[];
+  record_id?: number;
+}
+
+
 
 

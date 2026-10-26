@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
@@ -19,9 +20,12 @@ import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
 import FilterListIcon from "@mui/icons-material/FilterList";
 
 import Skeleton from "@mui/material/Skeleton";
+import Button from "@mui/material/Button";
+import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
 
 import { colorTokens, radiusTokens } from "../../../app/theme/tokens";
 import { GovernanceMetrics, CircleDistribution, OwnerDistribution } from "../types/governance.types";
+import { SendMatrixEmailModal } from "./SendMatrixEmailModal";
 
 export interface StatusMatrixFilterPayload {
   circle_id?: number | null;
@@ -37,7 +41,10 @@ interface GovernanceStatusMatrixProps {
   activeOwnerId?: number | null;
   activeStatus?: string;
   activeOverdue?: boolean;
+  reportingWeek?: string;
+  mode?: "governance" | "audit" | "documents";
   onCellClick: (filters: StatusMatrixFilterPayload) => void;
+  onOwnerNavigate?: (owner: OwnerDistribution) => void;
   sx?: any;
 }
 
@@ -48,10 +55,35 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
   activeOwnerId,
   activeStatus,
   activeOverdue,
+  reportingWeek,
+  mode = "governance",
   onCellClick,
+  onOwnerNavigate,
   sx,
 }) => {
+  let navigate: any = null;
+  try {
+    navigate = useNavigate();
+  } catch {
+    navigate = null;
+  }
+
   const [groupBy, setGroupBy] = useState<"circles" | "owners">("circles");
+  const [sendModalOpen, setSendModalOpen] = useState(false);
+
+  const handleOwnerClick = (owner: OwnerDistribution) => {
+    if (onOwnerNavigate) {
+      onOwnerNavigate(owner);
+      return;
+    }
+    const ownerParam = owner.owner_id ?? 0;
+    const q = new URLSearchParams();
+    if (owner.owner_name) q.set("name", owner.owner_name);
+    if (owner.username) q.set("username", owner.username);
+    if (navigate) {
+      navigate(`/${mode}/owners/${ownerParam}/tasks?${q.toString()}`);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -394,7 +426,7 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
                     <TableRow
                       key={idx}
                       hover
-                      onClick={() => onCellClick({ owner_id: isOwnerSelected ? null : owner.owner_id })}
+                      onClick={() => handleOwnerClick(owner)}
                       sx={{
                         cursor: "pointer",
                         backgroundColor: isOwnerSelected ? "#F0F9FF" : "inherit",
@@ -404,8 +436,20 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
                       {/* Owner Identity */}
                       <TableCell>
                         <Box
-                          onClick={() => onCellClick({ owner_id: isOwnerSelected ? null : owner.owner_id })}
-                          sx={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 1.2 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOwnerClick(owner);
+                          }}
+                          sx={{
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 1.2,
+                            "&:hover .owner-name-txt": {
+                              color: colorTokens.primary.main,
+                              textDecoration: "underline",
+                            },
+                          }}
                         >
                           <Box
                             sx={{
@@ -426,7 +470,11 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
                             {owner.initials || "U"}
                           </Box>
                           <Box>
-                            <Typography variant="body2" sx={{ fontWeight: 700, color: colorTokens.text.primary, fontSize: "0.82rem" }}>
+                            <Typography
+                              className="owner-name-txt"
+                              variant="body2"
+                              sx={{ fontWeight: 700, color: colorTokens.text.primary, fontSize: "0.82rem" }}
+                            >
                               {owner.owner_name}
                             </Typography>
                             {owner.username && (
@@ -652,6 +700,14 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
           </TableFooter>
         </Table>
       </TableContainer>
+
+      {/* Send Matrix Consolidated Email Modal */}
+      <SendMatrixEmailModal
+        open={sendModalOpen}
+        onClose={() => setSendModalOpen(false)}
+        reportingWeek={reportingWeek || metrics?.reporting_week}
+        circleId={activeCircleId}
+      />
     </Paper>
   );
 };

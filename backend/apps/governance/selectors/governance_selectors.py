@@ -190,6 +190,15 @@ def get_governance_actions(filters: Dict[str, Any], user: User):
     owner_id = filters.get("owner_id")
     if owner_id:
         qs = qs.filter(owner_id=owner_id)
+    else:
+        owner_name = filters.get("owner_name")
+        if owner_name:
+            qs = qs.filter(
+                Q(owner_name_override__iexact=owner_name)
+                | Q(owner__first_name__icontains=owner_name)
+                | Q(owner__last_name__icontains=owner_name)
+                | Q(owner__username__iexact=owner_name)
+            )
 
     # Escalated filter (workbook rule: active action with ageing > 30 days)
     is_escalated = filters.get("is_escalated")

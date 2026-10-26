@@ -166,6 +166,7 @@ class EmailDeliveryRecord(models.Model):
         TASK_REASSIGNMENT = "TASK_REASSIGNMENT", "Task Reassignment Alert"
         TASK_REMINDER = "TASK_REMINDER", "Scheduled Weekly Reminder"
         TASK_URGENT_FOLLOWUP = "TASK_URGENT_FOLLOWUP", "Urgent Follow-Up Task Alert"
+        STATUS_MATRIX_DIGEST = "STATUS_MATRIX_DIGEST", "Action Status Matrix Consolidated Alert"
         TEST_EMAIL = "TEST_EMAIL", "Admin Connection Test Email"
         PASSWORD_RESET = "PASSWORD_RESET", "Password Reset OTP Verification"
 

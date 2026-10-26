@@ -27,6 +27,8 @@ export * from "./components/RequestTargetRevisionModal";
 export * from "./components/ReviewRevisionRequestDialog";
 export * from "./components/RevisionRequestsTable";
 export * from "./components/SendTaskEmailModal";
+export * from "./components/SendMatrixEmailModal";
 export * from "./pages/GovernanceDashboardPage";
 export * from "./pages/TaskDetailPage";
+export * from "./pages/ActionOwnerTasksPage";
 

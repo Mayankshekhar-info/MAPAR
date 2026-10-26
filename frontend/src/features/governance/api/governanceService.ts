@@ -28,6 +28,12 @@ import {
   ReviewTargetRevisionRequestPayload,
   RevisionRequestsListResponse,
   SendUrgentFollowUpResponse,
+  StatusMatrixEmailPreviewResponse,
+  StatusMatrixEmailSendPayload,
+  StatusMatrixEmailSendResponse,
+  OwnerEmailPreviewResponse,
+  OwnerEmailSendPayload,
+  OwnerEmailSendResponse,
 } from "../types/governance.types";
 
 export const governanceService = {
@@ -36,6 +42,7 @@ export const governanceService = {
     if (params.search) q.set("search", params.search);
     if (params.circle_id) q.set("circle_id", String(params.circle_id));
     if (params.owner_id) q.set("owner_id", String(params.owner_id));
+    if (params.owner_name) q.set("owner_name", params.owner_name);
     if (params.status && params.status !== "ALL") q.set("status", params.status);
     if (params.evidence_status && params.evidence_status !== "ALL") q.set("evidence_status", params.evidence_status);
     if (params.view_mode) q.set("view_mode", params.view_mode);
@@ -374,6 +381,31 @@ export const governanceService = {
   async sendUrgentFollowUpEmail(actionId: number, recipientUserId?: number): Promise<SendUrgentFollowUpResponse> {
     const payload = recipientUserId ? { recipient_user_id: recipientUserId } : {};
     const res = await api.post<SendUrgentFollowUpResponse>(`/governance/actions/${actionId}/send-email/`, payload);
+    return res.data;
+  },
+
+  async getStatusMatrixEmailPreview(params?: { reporting_week?: string; circle_id?: number | null }): Promise<StatusMatrixEmailPreviewResponse> {
+    const q = new URLSearchParams();
+    if (params?.reporting_week && params.reporting_week !== "ALL") q.set("reporting_week", params.reporting_week);
+    if (params?.circle_id) q.set("circle_id", String(params.circle_id));
+    const res = await api.get<StatusMatrixEmailPreviewResponse>(`/governance/status-matrix/email-preview/?${q.toString()}`);
+    return res.data;
+  },
+
+  async sendStatusMatrixEmails(payload: StatusMatrixEmailSendPayload = {}): Promise<StatusMatrixEmailSendResponse> {
+    const res = await api.post<StatusMatrixEmailSendResponse>("/governance/status-matrix/send-emails/", payload);
+    return res.data;
+  },
+
+  async getOwnerEmailPreview(ownerId: number, ownerName?: string): Promise<OwnerEmailPreviewResponse> {
+    const q = new URLSearchParams();
+    if (ownerName) q.set("name", ownerName);
+    const res = await api.get<OwnerEmailPreviewResponse>(`/governance/owners/${ownerId}/email-preview/?${q.toString()}`);
+    return res.data;
+  },
+
+  async sendOwnerEmail(ownerId: number, payload: OwnerEmailSendPayload = {}): Promise<OwnerEmailSendResponse> {
+    const res = await api.post<OwnerEmailSendResponse>(`/governance/owners/${ownerId}/send-email/`, payload);
     return res.data;
   },
 };
