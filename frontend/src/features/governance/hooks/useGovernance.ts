@@ -12,6 +12,12 @@ import {
   BulkEvidenceReviewPayload,
   SubmitTargetRevisionRequestPayload,
   ReviewTargetRevisionRequestPayload,
+  AssignTaskReviewPayload,
+  SubmitReviewPayload,
+  UpdateTaskReviewPayload,
+  SubmitForVerificationPayload,
+  VerifyReviewPayload,
+  ApproveReviewPayload,
 } from "../types/governance.types";
 
 export const GOVERNANCE_KEYS = {
@@ -327,5 +333,91 @@ export function useSendUrgentFollowUpEmail() {
     },
   });
 }
+
+export function useAssignTaskReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ actionId, payload }: { actionId: number; payload: AssignTaskReviewPayload }) =>
+      governanceService.assignTaskReview(actionId, payload),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.detail(vars.actionId) });
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.fullDetail(vars.actionId) });
+    },
+  });
+}
+
+export function useUpdateTaskReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      actionId,
+      reviewId,
+      payload,
+    }: {
+      actionId: number;
+      reviewId: number;
+      payload: UpdateTaskReviewPayload;
+    }) => governanceService.updateTaskReview(actionId, reviewId, payload),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.detail(vars.actionId) });
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.fullDetail(vars.actionId) });
+    },
+  });
+}
+
+export function useSubmitForVerification() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ actionId, payload }: { actionId: number; payload?: SubmitForVerificationPayload }) =>
+      governanceService.submitTaskForVerification(actionId, payload),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.detail(vars.actionId) });
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.fullDetail(vars.actionId) });
+    },
+  });
+}
+
+export function useVerifyTaskReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ actionId, payload }: { actionId: number; payload: VerifyReviewPayload }) =>
+      governanceService.verifyTaskReview(actionId, payload),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.detail(vars.actionId) });
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.fullDetail(vars.actionId) });
+    },
+  });
+}
+
+export function useApproveTaskReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ actionId, payload }: { actionId: number; payload: ApproveReviewPayload }) =>
+      governanceService.approveTaskReview(actionId, payload),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.detail(vars.actionId) });
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.fullDetail(vars.actionId) });
+    },
+  });
+}
+
+export function useSubmitTaskReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ actionId, payload }: { actionId: number; payload: SubmitReviewPayload }) =>
+      governanceService.submitTaskReview(actionId, payload),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.detail(vars.actionId) });
+      queryClient.invalidateQueries({ queryKey: GOVERNANCE_KEYS.fullDetail(vars.actionId) });
+    },
+  });
+}
+
 
 

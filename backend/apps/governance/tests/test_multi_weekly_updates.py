@@ -287,6 +287,7 @@ class TestMultipleWeeklyTaskUpdates:
         owner = multi_update_setup["owner"]
         action = multi_update_setup["action"]
         action.evidence_required = False
+        action.review_workflow_status = GovernanceActionPoint.ReviewWorkflowStatus.APPROVED
         action.save()
         client.force_authenticate(user=owner)
 

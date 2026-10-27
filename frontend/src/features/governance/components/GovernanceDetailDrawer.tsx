@@ -320,6 +320,65 @@ export const GovernanceDetailDrawer: React.FC<GovernanceDetailDrawerProps> = ({
                 {action.assigned_by?.full_name || "System"}
               </Typography>
             </Box>
+            <Box>
+              <Typography variant="caption" sx={{ color: colorTokens.text.muted, display: "block" }}>
+                Assigned Reviewer:
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {action.assigned_reviewer?.full_name || action.assigned_reviewer?.username || "None assigned"}
+              </Typography>
+              {action.assigned_reviewer?.email && (
+                <Typography variant="caption" sx={{ color: colorTokens.text.secondary }}>
+                  {action.assigned_reviewer.email}
+                </Typography>
+              )}
+            </Box>
+            <Box>
+              <Typography variant="caption" sx={{ color: colorTokens.text.muted, display: "block" }}>
+                Review Workflow Status:
+              </Typography>
+              {action.review_workflow_status && action.review_workflow_status !== "None" ? (
+                <Chip
+                  label={action.review_workflow_status}
+                  size="small"
+                  sx={{
+                    fontWeight: 700,
+                    fontSize: "0.72rem",
+                    height: 22,
+                    mt: 0.25,
+                    bgcolor:
+                      action.review_workflow_status === "Approved"
+                        ? "#F0FDF4"
+                        : action.review_workflow_status === "Rework Required"
+                        ? "#FEF2F2"
+                        : action.review_workflow_status === "Awaiting Final Approval"
+                        ? "#F0F9FF"
+                        : "#EFF6FF",
+                    color:
+                      action.review_workflow_status === "Approved"
+                        ? "#166534"
+                        : action.review_workflow_status === "Rework Required"
+                        ? "#991B1B"
+                        : action.review_workflow_status === "Awaiting Final Approval"
+                        ? "#0369A1"
+                        : "#1D4ED8",
+                    border: `1px solid ${
+                      action.review_workflow_status === "Approved"
+                        ? "#BBF7D0"
+                        : action.review_workflow_status === "Rework Required"
+                        ? "#FECACA"
+                        : action.review_workflow_status === "Awaiting Final Approval"
+                        ? "#BAE6FD"
+                        : "#BFDBFE"
+                    }`,
+                  }}
+                />
+              ) : (
+                <Typography variant="body2" sx={{ color: colorTokens.text.muted, fontStyle: "italic" }}>
+                  None
+                </Typography>
+              )}
+            </Box>
           </Box>
         </Paper>
 

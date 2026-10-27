@@ -32,6 +32,13 @@ from apps.governance.api.views import (
     GovernanceStatusMatrixSendEmailView,
     GovernanceOwnerEmailPreviewView,
     GovernanceOwnerSendEmailView,
+    GovernanceActionAssignReviewView,
+    GovernanceActionReviewUpdateView,
+    GovernanceActionReviewsListView,
+    GovernanceActionSubmitForReviewView,
+    GovernanceActionSubmitReviewView,
+    GovernanceActionVerifyReviewView,
+    GovernanceActionApproveReviewView,
 )
 
 urlpatterns = [
@@ -44,6 +51,13 @@ urlpatterns = [
     path("actions/<int:pk>/", GovernanceActionPointDetailView.as_view(), name="governance-action-detail"),
     path("actions/<int:pk>/send-email/", GovernanceActionSendEmailView.as_view(), name="governance-action-send-email"),
     path("actions/<int:pk>/full-detail/", GovernanceActionPointFullDetailView.as_view(), name="governance-action-full-detail"),
+    path("actions/<int:pk>/assign-review/", GovernanceActionAssignReviewView.as_view(), name="governance-action-assign-review"),
+    path("actions/<int:pk>/submit-for-review/", GovernanceActionSubmitForReviewView.as_view(), name="governance-action-submit-for-review"),
+    path("actions/<int:pk>/submit-review/", GovernanceActionSubmitReviewView.as_view(), name="governance-action-submit-review"),
+    path("actions/<int:pk>/verify-review/", GovernanceActionVerifyReviewView.as_view(), name="governance-action-verify-review"),
+    path("actions/<int:pk>/approve-review/", GovernanceActionApproveReviewView.as_view(), name="governance-action-approve-review"),
+    path("actions/<int:pk>/reviews/", GovernanceActionReviewsListView.as_view(), name="governance-action-reviews-list"),
+    path("actions/<int:pk>/reviews/<int:review_id>/", GovernanceActionReviewUpdateView.as_view(), name="governance-action-review-update"),
     path("actions/<int:pk>/revise-target/", GovernanceReviseTargetView.as_view(), name="governance-revise-target"),
     path("actions/<int:pk>/revisions/", GovernanceRevisionHistoryView.as_view(), name="governance-action-revisions"),
     path("actions/<int:pk>/revision-requests/", GovernanceActionRevisionRequestListView.as_view(), name="governance-action-revision-requests"),

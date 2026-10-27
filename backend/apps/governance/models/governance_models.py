@@ -39,6 +39,15 @@ class GovernanceActionPoint(models.Model):
         WIP = "WIP", "WIP"
         CLOSED = "Closed", "Closed"
 
+    class ReviewWorkflowStatus(models.TextChoices):
+        NONE = "None", "None"
+        REVIEW_ASSIGNED = "Review Assigned", "Review Assigned"
+        SUBMITTED_FOR_REVIEW = "Submitted for Review", "Submitted for Review"
+        REVIEW_SUBMITTED = "Review Submitted", "Review Submitted"
+        REWORK_REQUIRED = "Rework Required", "Rework Required"
+        AWAITING_APPROVAL = "Awaiting Final Approval", "Awaiting Final Approval"
+        APPROVED = "Approved", "Approved"
+
     class Priority(models.TextChoices):
         HIGH = "High", "High"
         MEDIUM = "Medium", "Medium"
@@ -224,6 +233,21 @@ class GovernanceActionPoint(models.Model):
     evidence_required = models.BooleanField(
         default=True,
         help_text="Whether evidence/proof is required before closing this task",
+    )
+    review_workflow_status = models.CharField(
+        max_length=40,
+        choices=ReviewWorkflowStatus.choices,
+        default=ReviewWorkflowStatus.NONE,
+        db_index=True,
+        help_text="Review, verification & approval lifecycle status",
+    )
+    assigned_reviewer = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="governance_assigned_review_tasks",
+        help_text="Designated reviewer assigned to verify this task",
     )
 
     current_progress_percent = models.PositiveIntegerField(
@@ -602,4 +626,137 @@ class GovernanceTargetRevisionRequest(models.Model):
 
     def __str__(self):
         return f"{self.action_point.action_id} Req: {self.current_target_date} -> {self.requested_target_date} ({self.status})"
+
+
+class GovernanceTaskReview(models.Model):
+    """
+    Dedicated review assignment and audit record for Governance & Action Tracker tasks.
+    Enables authorized users to assign any task for review to a designated reviewer.
+    Maintains persistent history of review instructions, reviewer notes, status progressions,
+    and timestamps without altering the original task's status or progress.
+    """
+    class Status(models.TextChoices):
+        PENDING_REVIEW = "Pending Review", "Pending Review"
+        IN_REVIEW = "In Review", "In Review"
+        REVIEWED = "Reviewed", "Reviewed"
+        REVIEW_SUBMITTED = "Review Submitted", "Review Submitted"
+        SUBMITTED_FOR_REVIEW = "Submitted for Review", "Submitted for Review"
+        VERIFIED = "Verified", "Verified"
+        REWORK_REQUIRED = "Rework Required", "Rework Required"
+        APPROVED = "Approved", "Approved"
+
+    action_point = models.ForeignKey(
+        GovernanceActionPoint,
+        on_delete=models.CASCADE,
+        related_name="task_reviews",
+        help_text="Target action point assigned for review",
+    )
+    assigned_reviewer = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="governance_assigned_reviews",
+        help_text="Registered user assigned to perform this review",
+    )
+    requested_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="governance_requested_reviews",
+        help_text="User who initiated this review assignment",
+    )
+    assigned_at = models.DateTimeField(default=timezone.now, db_index=True)
+    instructions = models.TextField(
+        blank=True,
+        default="",
+        help_text="Optional review instruction, guidelines, or scope request from initiator",
+    )
+    status = models.CharField(
+        max_length=30,
+        choices=Status.choices,
+        default=Status.PENDING_REVIEW,
+        db_index=True,
+    )
+    submission_notes = models.TextField(
+        blank=True,
+        default="",
+        help_text="Submission notes from task owner when submitting for verification",
+    )
+    submitted_for_verification_at = models.DateTimeField(null=True, blank=True)
+    submitted_for_verification_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="governance_submitted_verification_reviews",
+        help_text="Task owner/user who submitted the task for review",
+    )
+    review_notes = models.TextField(
+        blank=True,
+        default="",
+        help_text="Reviewer notes, observations, feedback, and recommendations",
+    )
+    recommendations = models.TextField(
+        blank=True,
+        default="",
+        help_text="Reviewer recommendations and corrective actions",
+    )
+    reviewer_decision = models.CharField(
+        max_length=30,
+        blank=True,
+        default="",
+        help_text="Verification outcome: Verified or Rework Required",
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verified_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="governance_verified_reviews",
+        help_text="Reviewer who verified the task",
+    )
+    approver_decision = models.CharField(
+        max_length=30,
+        blank=True,
+        default="",
+        help_text="Approval outcome: Approved or Rework Required",
+    )
+    approver_comments = models.TextField(
+        blank=True,
+        default="",
+        help_text="Approver review comments and directives",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="governance_approved_reviews",
+        help_text="Authorized approver who granted final approval or returned for rework",
+    )
+    submitted_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="governance_submitted_reviews",
+        help_text="User who submitted/completed the review notes",
+    )
+    submitted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        app_label = "governance"
+        db_table = "governance_task_review"
+        ordering = ["-assigned_at"]
+        verbose_name = "Governance Task Review"
+        verbose_name_plural = "Governance Task Reviews"
+
+    def __str__(self):
+        reviewer_name = self.assigned_reviewer.username if self.assigned_reviewer else "Unassigned"
+        return f"{self.action_point.action_id} Review by {reviewer_name} ({self.status})"
+
 

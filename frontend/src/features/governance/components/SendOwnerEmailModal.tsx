@@ -268,7 +268,7 @@ export const SendOwnerEmailModal: React.FC<SendOwnerEmailModalProps> = ({
 
               <Box sx={{ mt: 1, pt: 1, borderTop: "1px dashed #E2E8F0" }}>
                 <Typography variant="caption" sx={{ color: colorTokens.text.muted, fontSize: "0.75rem" }}>
-                  <strong>CC:</strong> Configured governance review recipients (including shakti.singh@pratap.co.in)
+                  <strong>CC:</strong> Configured governance review recipients (including abhay@pratap.co.in)
                 </Typography>
               </Box>
             </Box>

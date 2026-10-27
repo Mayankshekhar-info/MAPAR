@@ -137,8 +137,8 @@ class GovernanceWeeklyUpdateService:
 
             # If user selected Completed or Closed
             if status_val == GovernanceActionPoint.Status.CLOSED:
-                from apps.governance.services.governance_evidence_service import GovernanceEvidenceService
-                GovernanceEvidenceService.check_can_close_task(action_point, user)
+                from apps.governance.services.governance_task_review_service import GovernanceTaskReviewService
+                GovernanceTaskReviewService.check_can_close_task(action_point, user)
                 action_point.status = GovernanceActionPoint.Status.CLOSED
                 if actual_closure_date:
                     action_point.actual_closure_date = actual_closure_date

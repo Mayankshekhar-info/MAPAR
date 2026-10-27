@@ -189,8 +189,20 @@ class GovernanceService:
                 old_status = action_point.status
                 new_status = data["status"]
                 if new_status == GovernanceActionPoint.Status.CLOSED:
-                    from apps.governance.services.governance_evidence_service import GovernanceEvidenceService
-                    GovernanceEvidenceService.check_can_close_task(action_point, user)
+                    from apps.governance.services.governance_task_review_service import GovernanceTaskReviewService
+                    GovernanceTaskReviewService.check_can_close_task(action_point, user)
+                    if action_point.review_workflow_status in [
+                        GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_SUBMITTED,
+                        GovernanceActionPoint.ReviewWorkflowStatus.AWAITING_APPROVAL,
+                    ]:
+                        action_point.review_workflow_status = GovernanceActionPoint.ReviewWorkflowStatus.APPROVED
+                        active_rev = action_point.task_reviews.order_by("-assigned_at").first()
+                        if active_rev and active_rev.status != "Approved":
+                            active_rev.status = "Approved"
+                            active_rev.approver_decision = "Approved"
+                            active_rev.approved_by = user
+                            active_rev.approved_at = timezone.now()
+                            active_rev.save()
                 action_point.status = new_status
                 if new_status == GovernanceActionPoint.Status.CLOSED and not action_point.actual_closure_date:
                     action_point.actual_closure_date = data.get("actual_closure_date") or timezone.localdate()

@@ -34,7 +34,15 @@ import {
   OwnerEmailPreviewResponse,
   OwnerEmailSendPayload,
   OwnerEmailSendResponse,
+  GovernanceTaskReview,
+  AssignTaskReviewPayload,
+  SubmitReviewPayload,
+  UpdateTaskReviewPayload,
+  SubmitForVerificationPayload,
+  VerifyReviewPayload,
+  ApproveReviewPayload,
 } from "../types/governance.types";
+
 
 export const governanceService = {
   async getActions(params: GovernanceFilterParams = {}): Promise<GovernanceListResponse> {
@@ -408,6 +416,81 @@ export const governanceService = {
     const res = await api.post<OwnerEmailSendResponse>(`/governance/owners/${ownerId}/send-email/`, payload);
     return res.data;
   },
+
+  async assignTaskReview(
+    actionId: number,
+    payload: AssignTaskReviewPayload
+  ): Promise<{ success: boolean; review: GovernanceTaskReview; message: string }> {
+    const res = await api.post<{ success: boolean; review: GovernanceTaskReview; message: string }>(
+      `/governance/actions/${actionId}/assign-review/`,
+      payload
+    );
+    return res.data;
+  },
+
+  async updateTaskReview(
+    actionId: number,
+    reviewId: number,
+    payload: UpdateTaskReviewPayload
+  ): Promise<{ success: boolean; review: GovernanceTaskReview; message: string }> {
+    const res = await api.patch<{ success: boolean; review: GovernanceTaskReview; message: string }>(
+      `/governance/actions/${actionId}/reviews/${reviewId}/`,
+      payload
+    );
+    return res.data;
+  },
+
+  async getTaskReviews(actionId: number): Promise<GovernanceTaskReview[]> {
+    const res = await api.get<{ success: boolean; reviews: GovernanceTaskReview[] }>(
+      `/governance/actions/${actionId}/reviews/`
+    );
+    return res.data.reviews;
+  },
+
+  async submitTaskForVerification(
+    actionId: number,
+    payload: SubmitForVerificationPayload = {}
+  ): Promise<{ success: boolean; review: GovernanceTaskReview; action: GovernanceActionPoint; message: string }> {
+    const res = await api.post<{ success: boolean; review: GovernanceTaskReview; action: GovernanceActionPoint; message: string }>(
+      `/governance/actions/${actionId}/submit-for-review/`,
+      payload
+    );
+    return res.data;
+  },
+
+  async submitTaskReview(
+    actionId: number,
+    payload: SubmitReviewPayload
+  ): Promise<{ success: boolean; review: GovernanceTaskReview; action: GovernanceActionPoint; message: string }> {
+    const res = await api.post<{ success: boolean; review: GovernanceTaskReview; action: GovernanceActionPoint; message: string }>(
+      `/governance/actions/${actionId}/submit-review/`,
+      payload
+    );
+    return res.data;
+  },
+
+  async verifyTaskReview(
+    actionId: number,
+    payload: VerifyReviewPayload
+  ): Promise<{ success: boolean; review: GovernanceTaskReview; action: GovernanceActionPoint; message: string }> {
+    const res = await api.post<{ success: boolean; review: GovernanceTaskReview; action: GovernanceActionPoint; message: string }>(
+      `/governance/actions/${actionId}/verify-review/`,
+      payload
+    );
+    return res.data;
+  },
+
+  async approveTaskReview(
+    actionId: number,
+    payload: ApproveReviewPayload
+  ): Promise<{ success: boolean; review: GovernanceTaskReview; action: GovernanceActionPoint; message: string }> {
+    const res = await api.post<{ success: boolean; review: GovernanceTaskReview; action: GovernanceActionPoint; message: string }>(
+      `/governance/actions/${actionId}/approve-review/`,
+      payload
+    );
+    return res.data;
+  },
 };
+
 
 

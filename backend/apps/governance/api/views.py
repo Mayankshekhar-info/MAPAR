@@ -47,7 +47,15 @@ from apps.governance.api.serializers import (
     GovernanceTargetRevisionRequestSerializer,
     CreateTargetRevisionRequestSerializer,
     ReviewTargetRevisionRequestSerializer,
+    GovernanceTaskReviewSerializer,
+    AssignTaskReviewSerializer,
+    UpdateTaskReviewSerializer,
+    SubmitForVerificationSerializer,
+    VerifyReviewSerializer,
+    ApproveReviewSerializer,
+    SubmitReviewSerializer,
 )
+
 
 
 
@@ -209,7 +217,9 @@ class GovernanceActionPointDetailView(APIView):
             updated_action = GovernanceService.update_action_point(action, update_data, request.user)
             out_serializer = GovernanceActionPointSerializer(updated_action)
             return Response({"success": True, "action": out_serializer.data})
-        except (ValidationError, DjangoValidationError, PermissionDenied) as e:
+        except PermissionDenied as pe:
+            return Response({"success": False, "errors": str(pe)}, status=status.HTTP_403_FORBIDDEN)
+        except (ValidationError, DjangoValidationError) as e:
             msg = e.message_dict if hasattr(e, "message_dict") else str(e)
             return Response({"success": False, "errors": msg}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -705,6 +715,12 @@ class GovernanceActionPointFullDetailView(APIView):
         revisions_serializer = GovernanceTargetRevisionSerializer(detail_data["revisions"], many=True)
         evidence_serializer = GovernanceEvidenceSerializer(detail_data["evidence_items"], many=True)
         revision_requests_serializer = GovernanceTargetRevisionRequestSerializer(detail_data["revision_requests"], many=True)
+        task_reviews_serializer = GovernanceTaskReviewSerializer(detail_data.get("task_reviews", []), many=True)
+        active_review_serializer = (
+            GovernanceTaskReviewSerializer(detail_data["active_review"]).data
+            if detail_data.get("active_review")
+            else None
+        )
 
         return Response({
             "success": True,
@@ -715,11 +731,21 @@ class GovernanceActionPointFullDetailView(APIView):
             "revisions": revisions_serializer.data,
             "evidence_items": evidence_serializer.data,
             "revision_requests": revision_requests_serializer.data,
+            "task_reviews": task_reviews_serializer.data,
+            "active_review": active_review_serializer,
+            "can_assign_review": detail_data.get("can_assign_review", True),
+            "can_submit_for_verification": detail_data.get("can_submit_for_verification", False),
+            "can_verify_review": detail_data.get("can_verify_review", False),
+            "can_approve_review": detail_data.get("can_approve_review", False),
+            "can_close_task": detail_data.get("can_close_task", True),
+            "closure_block_reason": detail_data.get("closure_block_reason", None),
+            "can_submit_review": detail_data.get("can_submit_review", False),
             "can_review_revision": detail_data["can_review_revision"],
             "can_request_revision": detail_data["can_request_revision"],
             "can_review_evidence": detail_data["can_review_evidence"],
             "has_pending_revision": detail_data["has_pending_revision"],
         })
+
 
 
 class GovernanceWeeklyUpdateListView(APIView):
@@ -1127,6 +1153,312 @@ class GovernanceOwnerSendEmailView(APIView):
 
         resp_status = status.HTTP_200_OK if result["success"] else status.HTTP_400_BAD_REQUEST
         return Response(result, status=resp_status)
+
+
+class GovernanceActionAssignReviewView(APIView):
+    """
+    POST /api/v1/governance/actions/<id>/assign-review/
+    Assigns an authorized task to a reviewer with optional instructions.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get_action(self, action_id, user):
+        qs = apply_governance_scope(GovernanceActionPoint.objects.all(), user)
+        action = qs.filter(id=action_id).first()
+        if not action:
+            raise PermissionDenied("Action point not found or outside authorized scope.")
+        return action
+
+    def post(self, request, pk):
+        action = self._get_action(pk, request.user)
+        serializer = AssignTaskReviewSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        reviewer = serializer.validated_data["reviewer_id"]
+        instructions = serializer.validated_data.get("instructions", "")
+
+        from apps.governance.services.governance_task_review_service import GovernanceTaskReviewService
+        try:
+            review = GovernanceTaskReviewService.assign_review(
+                action_point=action,
+                reviewer=reviewer,
+                requested_by=request.user,
+                instructions=instructions,
+            )
+            out_serializer = GovernanceTaskReviewSerializer(review)
+            reviewer_name = reviewer.get_full_name() or reviewer.username
+            return Response(
+                {
+                    "success": True,
+                    "review": out_serializer.data,
+                    "message": f"Task successfully assigned for review to {reviewer_name}.",
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        except PermissionDenied as pe:
+            return Response({"success": False, "message": str(pe)}, status=status.HTTP_403_FORBIDDEN)
+        except (ValidationError, DjangoValidationError) as e:
+            return Response({"success": False, "errors": e.message_dict if hasattr(e, "message_dict") else str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class GovernanceActionReviewUpdateView(APIView):
+    """
+    PATCH /api/v1/governance/actions/<id>/reviews/<review_id>/
+    Allows the designated reviewer to submit or update review notes and status.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get_action(self, action_id, user):
+        qs = apply_governance_scope(GovernanceActionPoint.objects.all(), user)
+        action = qs.filter(id=action_id).first()
+        if not action:
+            raise PermissionDenied("Action point not found or outside authorized scope.")
+        return action
+
+    def patch(self, request, pk, review_id):
+        action = self._get_action(pk, request.user)
+        review = action.task_reviews.filter(id=review_id).first()
+        if not review:
+            return Response({"success": False, "message": "Review record not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = UpdateTaskReviewSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        status_val = serializer.validated_data["status"]
+        review_notes = serializer.validated_data.get("review_notes", "")
+
+        from apps.governance.services.governance_task_review_service import GovernanceTaskReviewService
+        try:
+            updated_review = GovernanceTaskReviewService.submit_or_update_review(
+                review=review,
+                user=request.user,
+                status=status_val,
+                review_notes=review_notes,
+            )
+            out_serializer = GovernanceTaskReviewSerializer(updated_review)
+            return Response({
+                "success": True,
+                "review": out_serializer.data,
+                "message": f"Review updated to '{status_val}' successfully.",
+            })
+        except PermissionDenied as pe:
+            return Response({"success": False, "message": str(pe)}, status=status.HTTP_403_FORBIDDEN)
+        except (ValidationError, DjangoValidationError) as e:
+            return Response({"success": False, "errors": e.message_dict if hasattr(e, "message_dict") else str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class GovernanceActionReviewsListView(APIView):
+    """
+    GET /api/v1/governance/actions/<id>/reviews/
+    Returns all review records and history for this task.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get_action(self, action_id, user):
+        qs = apply_governance_scope(GovernanceActionPoint.objects.all(), user)
+        action = qs.filter(id=action_id).first()
+        if not action:
+            raise PermissionDenied("Action point not found or outside authorized scope.")
+        return action
+
+    def get(self, request, pk):
+        action = self._get_action(pk, request.user)
+        reviews = action.task_reviews.select_related(
+            "assigned_reviewer",
+            "requested_by",
+            "submitted_by",
+            "submitted_for_verification_by",
+            "verified_by",
+            "approved_by",
+        ).order_by("-assigned_at")
+        serializer = GovernanceTaskReviewSerializer(reviews, many=True)
+        return Response({"success": True, "reviews": serializer.data})
+
+
+class GovernanceActionSubmitForReviewView(APIView):
+    """
+    POST /api/v1/governance/actions/<id>/submit-for-review/
+    Original task owner submits the task for verification.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get_action(self, action_id, user):
+        qs = apply_governance_scope(GovernanceActionPoint.objects.all(), user)
+        action = qs.filter(id=action_id).first()
+        if not action:
+            raise PermissionDenied("Action point not found or outside authorized scope.")
+        return action
+
+    def post(self, request, pk):
+        action = self._get_action(pk, request.user)
+        serializer = SubmitForVerificationSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        submission_notes = serializer.validated_data.get("submission_notes", "")
+        from apps.governance.services.governance_task_review_service import GovernanceTaskReviewService
+        try:
+            review = GovernanceTaskReviewService.submit_for_verification(
+                action_point=action,
+                user=request.user,
+                submission_notes=submission_notes,
+            )
+            out_serializer = GovernanceTaskReviewSerializer(review)
+            action_serializer = GovernanceActionPointSerializer(action)
+            return Response({
+                "success": True,
+                "review": out_serializer.data,
+                "action": action_serializer.data,
+                "message": "Task submitted for verification successfully.",
+            }, status=status.HTTP_200_OK)
+        except PermissionDenied as pe:
+            return Response({"success": False, "message": str(pe)}, status=status.HTTP_403_FORBIDDEN)
+        except (ValidationError, DjangoValidationError) as e:
+            return Response({"success": False, "errors": e.message_dict if hasattr(e, "message_dict") else str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class GovernanceActionVerifyReviewView(APIView):
+    """
+    POST /api/v1/governance/actions/<id>/verify-review/
+    Assigned reviewer submits verification outcome (Verified or Rework Required).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get_action(self, action_id, user):
+        qs = apply_governance_scope(GovernanceActionPoint.objects.all(), user)
+        action = qs.filter(id=action_id).first()
+        if not action:
+            raise PermissionDenied("Action point not found or outside authorized scope.")
+        return action
+
+    def post(self, request, pk):
+        action = self._get_action(pk, request.user)
+        serializer = VerifyReviewSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        outcome = serializer.validated_data["outcome"]
+        review_notes = serializer.validated_data.get("review_notes", "")
+
+        from apps.governance.services.governance_task_review_service import GovernanceTaskReviewService
+        try:
+            review = GovernanceTaskReviewService.verify_review(
+                action_point=action,
+                user=request.user,
+                outcome=outcome,
+                review_notes=review_notes,
+            )
+            out_serializer = GovernanceTaskReviewSerializer(review)
+            action_serializer = GovernanceActionPointSerializer(action)
+            return Response({
+                "success": True,
+                "review": out_serializer.data,
+                "action": action_serializer.data,
+                "message": f"Review verification submitted as '{outcome}'.",
+            }, status=status.HTTP_200_OK)
+        except PermissionDenied as pe:
+            return Response({"success": False, "message": str(pe)}, status=status.HTTP_403_FORBIDDEN)
+        except (ValidationError, DjangoValidationError) as e:
+            return Response({"success": False, "errors": e.message_dict if hasattr(e, "message_dict") else str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class GovernanceActionApproveReviewView(APIView):
+    """
+    POST /api/v1/governance/actions/<id>/approve-review/
+    Authorized approver grants final approval or returns for rework.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get_action(self, action_id, user):
+        qs = apply_governance_scope(GovernanceActionPoint.objects.all(), user)
+        action = qs.filter(id=action_id).first()
+        if not action:
+            raise PermissionDenied("Action point not found or outside authorized scope.")
+        return action
+
+    def post(self, request, pk):
+        action = self._get_action(pk, request.user)
+        serializer = ApproveReviewSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        decision = serializer.validated_data["decision"]
+        comments = serializer.validated_data.get("comments", "")
+
+        from apps.governance.services.governance_task_review_service import GovernanceTaskReviewService
+        try:
+            review = GovernanceTaskReviewService.approve_review(
+                action_point=action,
+                user=request.user,
+                decision=decision,
+                comments=comments,
+            )
+            out_serializer = GovernanceTaskReviewSerializer(review)
+            action_serializer = GovernanceActionPointSerializer(action)
+            return Response({
+                "success": True,
+                "review": out_serializer.data,
+                "action": action_serializer.data,
+                "message": f"Task approval decision recorded as '{decision}'.",
+            }, status=status.HTTP_200_OK)
+        except PermissionDenied as pe:
+            return Response({"success": False, "message": str(pe)}, status=status.HTTP_403_FORBIDDEN)
+        except (ValidationError, DjangoValidationError) as e:
+            return Response({"success": False, "errors": e.message_dict if hasattr(e, "message_dict") else str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class GovernanceActionSubmitReviewView(APIView):
+    """
+    POST /api/v1/governance/actions/<id>/submit-review/
+    Allows the assigned reviewer to submit their Findings / Observations, review notes, and recommendations.
+    Persists findings and recommendations, records reviewer identity and timestamp,
+    and updates task review_workflow_status to 'Review Submitted'.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def _get_action(self, action_id, user):
+        qs = apply_governance_scope(GovernanceActionPoint.objects.all(), user)
+        action = qs.filter(id=action_id).first()
+        if not action:
+            raise PermissionDenied("Action point not found or outside authorized scope.")
+        return action
+
+    def post(self, request, pk):
+        action = self._get_action(pk, request.user)
+        serializer = SubmitReviewSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        findings = serializer.validated_data["findings"]
+        recommendations = serializer.validated_data.get("recommendations", "")
+        review_notes = serializer.validated_data.get("review_notes", "")
+
+        from apps.governance.services.governance_task_review_service import GovernanceTaskReviewService
+        try:
+            review = GovernanceTaskReviewService.submit_review(
+                action_point=action,
+                user=request.user,
+                findings=findings,
+                recommendations=recommendations,
+                review_notes=review_notes,
+            )
+            out_serializer = GovernanceTaskReviewSerializer(review)
+            action_serializer = GovernanceActionPointSerializer(action)
+            return Response({
+                "success": True,
+                "review": out_serializer.data,
+                "action": action_serializer.data,
+                "message": "Review findings and recommendations submitted successfully.",
+            }, status=status.HTTP_200_OK)
+        except PermissionDenied as pe:
+            return Response({"success": False, "message": str(pe)}, status=status.HTTP_403_FORBIDDEN)
+        except (ValidationError, DjangoValidationError) as e:
+            return Response({"success": False, "errors": e.message_dict if hasattr(e, "message_dict") else str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
 
 
 

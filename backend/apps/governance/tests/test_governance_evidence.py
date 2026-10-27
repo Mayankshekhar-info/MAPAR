@@ -185,6 +185,8 @@ def test_closure_rule_blocked_when_evidence_unaccepted(evidence_test_setup):
     owner_client = APIClient()
     owner_client.force_authenticate(user=evidence_test_setup["owner"])
     action = evidence_test_setup["action"]
+    action.review_workflow_status = GovernanceActionPoint.ReviewWorkflowStatus.APPROVED
+    action.save()
 
     # Try closing task while evidence is Not Submitted -> blocked
     res = owner_client.patch(

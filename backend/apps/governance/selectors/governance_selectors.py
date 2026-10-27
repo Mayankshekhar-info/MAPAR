@@ -88,30 +88,38 @@ def apply_governance_scope(queryset, user):
     if scope.is_unrestricted:
         return queryset
 
-    user_accessible_q = Q(owner=user) | Q(created_by=user) | Q(assigned_by=user)
+    user_accessible_q = (
+        Q(owner=user)
+        | Q(created_by=user)
+        | Q(assigned_by=user)
+        | Q(assigned_reviewer=user)
+        | Q(task_reviews__assigned_reviewer=user)
+    )
 
     role = getattr(user, "role", None)
     if role == User.Role.ACTION_OWNER:
         if scope.circle_ids:
-            return queryset.filter(Q(circle_id__in=scope.circle_ids) | user_accessible_q)
-        return queryset.filter(user_accessible_q)
+            return queryset.filter(Q(circle_id__in=scope.circle_ids) | user_accessible_q).distinct()
+        return queryset.filter(user_accessible_q).distinct()
 
     if scope.circle_ids is not None:
-        return queryset.filter(Q(circle_id__in=scope.circle_ids) | user_accessible_q)
+        return queryset.filter(Q(circle_id__in=scope.circle_ids) | user_accessible_q).distinct()
 
     user_circle_id = getattr(user, "circle_id", None)
     if user_circle_id:
-        return queryset.filter(Q(circle_id=user_circle_id) | user_accessible_q)
+        return queryset.filter(Q(circle_id=user_circle_id) | user_accessible_q).distinct()
 
-    return queryset.filter(user_accessible_q)
+    return queryset.filter(user_accessible_q).distinct()
 
 
 def get_governance_actions(filters: Dict[str, Any], user: User):
     """
     Retrieves filtered and scoped governance actions.
-    Supports view_mode ('all', 'my_tasks', 'evidence_review').
+    Supports view_mode ('all', 'my_tasks', 'assigned_for_review', 'review_submitted',
+    'assigned_to_me', 'pending_reviews', 'submitted_reviews', 'evidence_review').
     """
-    qs = GovernanceActionPoint.objects.select_related("circle", "owner", "assigned_by", "created_by").all()
+    from apps.governance.models import GovernanceTaskReview
+    qs = GovernanceActionPoint.objects.select_related("circle", "owner", "assigned_by", "created_by", "assigned_reviewer").all()
     qs = apply_governance_scope(qs, user)
 
     # View Mode Filter
@@ -120,6 +128,64 @@ def get_governance_actions(filters: Dict[str, Any], user: User):
         qs = qs.filter(owner=user)
     elif view_mode in ["created_by_me", "created_by"]:
         qs = qs.filter(created_by=user)
+    elif view_mode == "assigned_for_review":
+        qs = qs.filter(
+            Q(assigned_reviewer__isnull=False) | Q(task_reviews__isnull=False)
+        ).distinct()
+    elif view_mode == "review_submitted":
+        qs = qs.filter(
+            Q(review_workflow_status__in=[
+                GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_SUBMITTED,
+                GovernanceActionPoint.ReviewWorkflowStatus.AWAITING_APPROVAL,
+                "Verified",
+            ])
+            | Q(task_reviews__status__in=[
+                GovernanceTaskReview.Status.REVIEW_SUBMITTED,
+                GovernanceTaskReview.Status.VERIFIED,
+            ])
+        ).distinct()
+    elif view_mode in ["assigned_to_me", "my_reviews", "assigned_to_me_for_review"]:
+        qs = qs.filter(
+            Q(assigned_reviewer=user) | Q(task_reviews__assigned_reviewer=user)
+        ).distinct()
+    elif view_mode == "pending_reviews":
+        qs = qs.filter(
+            (Q(assigned_reviewer=user) | Q(task_reviews__assigned_reviewer=user))
+            & (
+                Q(review_workflow_status__in=[
+                    GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_ASSIGNED,
+                    GovernanceActionPoint.ReviewWorkflowStatus.SUBMITTED_FOR_REVIEW,
+                    GovernanceActionPoint.ReviewWorkflowStatus.NONE,
+                    "Pending Review",
+                    "In Review",
+                ])
+                | Q(task_reviews__status__in=[
+                    GovernanceTaskReview.Status.PENDING_REVIEW,
+                    GovernanceTaskReview.Status.IN_REVIEW,
+                    GovernanceTaskReview.Status.SUBMITTED_FOR_REVIEW,
+                ])
+            )
+        ).distinct()
+    elif view_mode == "submitted_reviews":
+        qs = qs.filter(
+            (Q(assigned_reviewer=user) | Q(task_reviews__assigned_reviewer=user))
+            & (
+                Q(review_workflow_status__in=[
+                    GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_SUBMITTED,
+                    GovernanceActionPoint.ReviewWorkflowStatus.AWAITING_APPROVAL,
+                    GovernanceActionPoint.ReviewWorkflowStatus.APPROVED,
+                    GovernanceActionPoint.ReviewWorkflowStatus.REWORK_REQUIRED,
+                    "Verified",
+                ])
+                | Q(task_reviews__status__in=[
+                    GovernanceTaskReview.Status.REVIEW_SUBMITTED,
+                    GovernanceTaskReview.Status.VERIFIED,
+                    GovernanceTaskReview.Status.REVIEWED,
+                    GovernanceTaskReview.Status.APPROVED,
+                    GovernanceTaskReview.Status.REWORK_REQUIRED,
+                ])
+            )
+        ).distinct()
     elif view_mode == "missing_weekly":
         qs = qs.filter(
             status__in=[GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP]
@@ -129,6 +195,10 @@ def get_governance_actions(filters: Dict[str, Any], user: User):
             GovernanceActionPoint.EvidenceStatus.PENDING_REVIEW,
             GovernanceActionPoint.EvidenceStatus.REWORK_REQUIRED,
         ])
+
+    reviewer_id = filters.get("reviewer_id")
+    if reviewer_id:
+        qs = qs.filter(task_reviews__assigned_reviewer_id=reviewer_id).distinct()
 
     # Hierarchy Level and Node Filter
     hierarchy_level = filters.get("hierarchy_level")
@@ -372,6 +442,11 @@ def get_governance_summary_metrics(
             "created_by_me_count": 0,
             "my_assigned_count": 0,
             "missing_weekly_count": 0,
+            "assigned_for_review_count": 0,
+            "review_submitted_count": 0,
+            "assigned_to_me_review_count": 0,
+            "pending_reviews_count": 0,
+            "submitted_reviews_count": 0,
             "pending_evidence_count": 0,
             "accepted_evidence_count": 0,
             "rework_evidence_count": 0,
@@ -494,6 +569,65 @@ def get_governance_summary_metrics(
         .filter(updates_count=0)
         .count()
     )
+
+    from apps.governance.models import GovernanceTaskReview
+    assigned_for_review_count = qs.filter(
+        Q(assigned_reviewer__isnull=False) | Q(task_reviews__isnull=False)
+    ).distinct().count()
+
+    review_submitted_count = qs.filter(
+        Q(review_workflow_status__in=[
+            GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_SUBMITTED,
+            GovernanceActionPoint.ReviewWorkflowStatus.AWAITING_APPROVAL,
+            "Verified",
+        ])
+        | Q(task_reviews__status__in=[
+            GovernanceTaskReview.Status.REVIEW_SUBMITTED,
+            GovernanceTaskReview.Status.VERIFIED,
+        ])
+    ).distinct().count()
+
+    assigned_to_me_review_count = qs.filter(
+        Q(assigned_reviewer=user) | Q(task_reviews__assigned_reviewer=user)
+    ).distinct().count()
+
+    pending_reviews_count = qs.filter(
+        (Q(assigned_reviewer=user) | Q(task_reviews__assigned_reviewer=user))
+        & (
+            Q(review_workflow_status__in=[
+                GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_ASSIGNED,
+                GovernanceActionPoint.ReviewWorkflowStatus.SUBMITTED_FOR_REVIEW,
+                GovernanceActionPoint.ReviewWorkflowStatus.NONE,
+                "Pending Review",
+                "In Review",
+            ])
+            | Q(task_reviews__status__in=[
+                GovernanceTaskReview.Status.PENDING_REVIEW,
+                GovernanceTaskReview.Status.IN_REVIEW,
+                GovernanceTaskReview.Status.SUBMITTED_FOR_REVIEW,
+            ])
+        )
+    ).distinct().count()
+
+    submitted_reviews_count = qs.filter(
+        (Q(assigned_reviewer=user) | Q(task_reviews__assigned_reviewer=user))
+        & (
+            Q(review_workflow_status__in=[
+                GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_SUBMITTED,
+                GovernanceActionPoint.ReviewWorkflowStatus.AWAITING_APPROVAL,
+                GovernanceActionPoint.ReviewWorkflowStatus.APPROVED,
+                GovernanceActionPoint.ReviewWorkflowStatus.REWORK_REQUIRED,
+                "Verified",
+            ])
+            | Q(task_reviews__status__in=[
+                GovernanceTaskReview.Status.REVIEW_SUBMITTED,
+                GovernanceTaskReview.Status.VERIFIED,
+                GovernanceTaskReview.Status.REVIEWED,
+                GovernanceTaskReview.Status.APPROVED,
+                GovernanceTaskReview.Status.REWORK_REQUIRED,
+            ])
+        )
+    ).distinct().count()
 
     # Due in 3 days & No update in 7 days
     three_days_later = today + timedelta(days=3)
@@ -805,6 +939,11 @@ def get_governance_summary_metrics(
         "created_by_me_count": created_by_me_count,
         "my_assigned_count": my_assigned_count,
         "missing_weekly_count": missing_weekly_count,
+        "assigned_for_review_count": assigned_for_review_count,
+        "review_submitted_count": review_submitted_count,
+        "assigned_to_me_review_count": assigned_to_me_review_count,
+        "pending_reviews_count": pending_reviews_count,
+        "submitted_reviews_count": submitted_reviews_count,
         "pending_evidence_count": pending_evidence_count,
         "accepted_evidence_count": accepted_evidence_count,
         "rework_evidence_count": rework_evidence_count,
@@ -892,8 +1031,46 @@ def get_task_full_detail(action_point_id: int, user: User) -> Optional[Dict[str,
         action.revision_requests.select_related("requested_by", "reviewed_by").order_by("-requested_at")
     )
 
+    # Task reviews in reverse chronological order (latest first)
+    task_reviews = list(
+        action.task_reviews.select_related(
+            "assigned_reviewer",
+            "requested_by",
+            "submitted_by",
+            "submitted_for_verification_by",
+            "verified_by",
+            "approved_by",
+        ).order_by("-assigned_at")
+    )
+    active_review = task_reviews[0] if task_reviews else None
+
     from apps.governance.services.governance_service import GovernanceService
     from apps.governance.services.governance_evidence_service import GovernanceEvidenceService
+    from apps.governance.services.governance_task_review_service import GovernanceTaskReviewService
+
+    can_assign_review = GovernanceTaskReviewService.can_assign_review(action, user)
+    can_submit_for_verification = GovernanceTaskReviewService.can_submit_for_verification(action, user)
+    can_verify_review = GovernanceTaskReviewService.can_verify_review(action, user)
+    can_approve_review = GovernanceTaskReviewService.can_approve_review(action, user)
+
+    # Review submission capability for assigned reviewer
+    can_submit_review = bool(
+        user.is_superuser
+        or getattr(user, "is_superadmin", False)
+        or (action.assigned_reviewer_id and action.assigned_reviewer_id == user.id)
+        or (active_review and active_review.assigned_reviewer_id and active_review.assigned_reviewer_id == user.id)
+    )
+
+    can_close_task = True
+    closure_block_reason = None
+    try:
+        GovernanceTaskReviewService.check_can_close_task(action, user)
+    except Exception as exc:
+        can_close_task = False
+        if hasattr(exc, "message_dict") and "status" in exc.message_dict:
+            closure_block_reason = exc.message_dict["status"][0]
+        else:
+            closure_block_reason = str(exc)
 
     can_review_revision = GovernanceService.can_review_target_revision(action, user)
     can_request_revision = GovernanceService.can_request_target_revision(action, user)
@@ -908,11 +1085,21 @@ def get_task_full_detail(action_point_id: int, user: User) -> Optional[Dict[str,
         "revisions": revisions,
         "evidence_items": evidence_items,
         "revision_requests": revision_requests,
+        "task_reviews": task_reviews,
+        "active_review": active_review,
+        "can_assign_review": can_assign_review,
+        "can_submit_for_verification": can_submit_for_verification,
+        "can_verify_review": can_verify_review,
+        "can_approve_review": can_approve_review,
+        "can_close_task": can_close_task,
+        "closure_block_reason": closure_block_reason,
+        "can_submit_review": can_submit_review,
         "can_review_revision": can_review_revision,
         "can_request_revision": can_request_revision,
         "can_review_evidence": can_review_evidence,
         "has_pending_revision": has_pending_revision,
     }
+
 
 
 def get_eligible_users_for_hierarchy_node(level: Optional[str] = None, node_id: Optional[int] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:

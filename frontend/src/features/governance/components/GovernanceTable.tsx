@@ -29,6 +29,7 @@ import EventRepeatIcon from "@mui/icons-material/EventRepeat";
 import DynamicFeedIcon from "@mui/icons-material/DynamicFeed";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import PriorityHighIcon from "@mui/icons-material/PriorityHigh";
+import dayjs from "dayjs";
 
 import { colorTokens } from "../../../app/theme/tokens";
 import { GovernanceActionPoint, GovernanceFilterParams, GovernanceMetadata } from "../types/governance.types";
@@ -309,6 +310,94 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
     );
   };
 
+  const isReviewView = [
+    "assigned_for_review",
+    "review_submitted",
+    "assigned_to_me",
+    "pending_reviews",
+    "submitted_reviews",
+  ].includes(filters.view_mode || "");
+
+  const getReviewStatusChip = (reviewStatus?: string) => {
+    switch (reviewStatus) {
+      case "Approved":
+        return (
+          <Chip
+            label="Approved"
+            size="small"
+            sx={{
+              backgroundColor: "#ECFDF5",
+              color: "#047857",
+              fontWeight: 700,
+              fontSize: "0.72rem",
+              borderRadius: "6px",
+              border: "1px solid #A7F3D0",
+            }}
+          />
+        );
+      case "Review Submitted":
+        return (
+          <Chip
+            label="Review Submitted"
+            size="small"
+            sx={{
+              backgroundColor: "#EFF6FF",
+              color: "#1E40AF",
+              fontWeight: 700,
+              fontSize: "0.72rem",
+              borderRadius: "6px",
+              border: "1px solid #BFDBFE",
+            }}
+          />
+        );
+      case "Review Assigned":
+      case "Pending Review":
+        return (
+          <Chip
+            label={reviewStatus || "Pending Review"}
+            size="small"
+            sx={{
+              backgroundColor: "#FEF3C7",
+              color: "#B45309",
+              fontWeight: 700,
+              fontSize: "0.72rem",
+              borderRadius: "6px",
+              border: "1px solid #FDE68A",
+            }}
+          />
+        );
+      case "Rework Required":
+        return (
+          <Chip
+            label="Rework Required"
+            size="small"
+            sx={{
+              backgroundColor: "#FEF2F2",
+              color: "#991B1B",
+              fontWeight: 700,
+              fontSize: "0.72rem",
+              borderRadius: "6px",
+              border: "1px solid #FECACA",
+            }}
+          />
+        );
+      default:
+        return (
+          <Chip
+            label={reviewStatus || "Pending Review"}
+            size="small"
+            sx={{
+              backgroundColor: "#F1F5F9",
+              color: "#475569",
+              fontWeight: 600,
+              fontSize: "0.72rem",
+              borderRadius: "6px",
+            }}
+          />
+        );
+    }
+  };
+
   return (
     <Paper
       elevation={0}
@@ -509,41 +598,213 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
       <TableContainer sx={{ maxHeight: 600 }}>
         <Table stickyHeader size="small">
           <TableHead>
-            <TableRow sx={{ "& th": { fontWeight: 700, backgroundColor: "#F8FAFC", color: colorTokens.text.secondary, fontSize: "0.78rem" } }}>
-              <TableCell padding="checkbox">
-                <Checkbox
-                  color="primary"
-                  indeterminate={someSelected}
-                  checked={allSelected}
-                  onChange={handleSelectAllClick}
-                  inputProps={{ "aria-label": "select all tasks" }}
-                />
-              </TableCell>
-              <TableCell>Action ID</TableCell>
-              <TableCell>Circle</TableCell>
-              <TableCell>Function</TableCell>
-              <TableCell>Bucket</TableCell>
-              <TableCell sx={{ minWidth: 220 }}>Action Point / Deliverable</TableCell>
-              <TableCell>Owner</TableCell>
-              <TableCell>Target Date</TableCell>
-              <TableCell>Progress %</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Evidence Status</TableCell>
-              <TableCell>Priority</TableCell>
-              <TableCell>Ageing</TableCell>
-              <TableCell align="center">Escalation</TableCell>
-              <TableCell align="right">Actions</TableCell>
-            </TableRow>
+            {isReviewView ? (
+              <TableRow sx={{ "& th": { fontWeight: 700, backgroundColor: "#F8FAFC", color: colorTokens.text.secondary, fontSize: "0.78rem" } }}>
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    color="primary"
+                    indeterminate={someSelected}
+                    checked={allSelected}
+                    onChange={handleSelectAllClick}
+                    inputProps={{ "aria-label": "select all tasks" }}
+                  />
+                </TableCell>
+                <TableCell>Action ID</TableCell>
+                <TableCell>Circle</TableCell>
+                <TableCell sx={{ minWidth: 220 }}>Action Point / Title</TableCell>
+                <TableCell>Assigned Owner</TableCell>
+                <TableCell>Assigned Reviewer</TableCell>
+                <TableCell>Assignment Date</TableCell>
+                <TableCell>Review Status</TableCell>
+                <TableCell sx={{ minWidth: 240 }}>Latest Submitted Findings</TableCell>
+                <TableCell>Target Date</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            ) : (
+              <TableRow sx={{ "& th": { fontWeight: 700, backgroundColor: "#F8FAFC", color: colorTokens.text.secondary, fontSize: "0.78rem" } }}>
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    color="primary"
+                    indeterminate={someSelected}
+                    checked={allSelected}
+                    onChange={handleSelectAllClick}
+                    inputProps={{ "aria-label": "select all tasks" }}
+                  />
+                </TableCell>
+                <TableCell>Action ID</TableCell>
+                <TableCell>Circle</TableCell>
+                <TableCell>Function</TableCell>
+                <TableCell>Bucket</TableCell>
+                <TableCell sx={{ minWidth: 220 }}>Action Point / Deliverable</TableCell>
+                <TableCell>Owner</TableCell>
+                <TableCell>Target Date</TableCell>
+                <TableCell>Progress %</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Evidence Status</TableCell>
+                <TableCell>Priority</TableCell>
+                <TableCell>Ageing</TableCell>
+                <TableCell align="center">Escalation</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            )}
           </TableHead>
           <TableBody>
             {actions.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={15} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={isReviewView ? 11 : 15} align="center" sx={{ py: 6 }}>
                   <Typography variant="body2" sx={{ color: colorTokens.text.muted }}>
                     {isLoading ? "Loading action points..." : "No governance action points found."}
                   </Typography>
                 </TableCell>
               </TableRow>
+            ) : isReviewView ? (
+              actions.map((row) => {
+                const isItemSelected = selectedTaskIds.includes(row.id);
+                const reviewerName = row.assigned_reviewer?.full_name || row.active_review?.reviewer_name || "—";
+                const reviewerEmail = row.assigned_reviewer?.email || row.active_review?.reviewer_email;
+                const assignmentDate = row.active_review?.assigned_at
+                  ? dayjs(row.active_review.assigned_at).format("DD MMM YYYY")
+                  : "—";
+                const findings = row.active_review?.review_notes;
+                const recommendations = row.active_review?.recommendations;
+
+                return (
+                  <TableRow
+                    key={row.id}
+                    hover
+                    selected={isItemSelected}
+                    sx={{
+                      cursor: "pointer",
+                      "&:hover": { backgroundColor: "#F8FAFC" },
+                    }}
+                    onClick={() => handleRowClick(row)}
+                  >
+                    <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        color="primary"
+                        checked={isItemSelected}
+                        onChange={() => onToggleSelectTask?.(row.id)}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ fontWeight: 700, color: colorTokens.primary.main, fontSize: "0.8rem" }}>
+                      {row.action_id}
+                    </TableCell>
+                    <TableCell>
+                      <Tooltip title={row.circle?.name || ""} arrow>
+                        <Chip
+                          label={row.circle?.code || "—"}
+                          size="small"
+                          sx={{
+                            fontWeight: 600,
+                            fontSize: "0.72rem",
+                            backgroundColor: "#F1F5F9",
+                            borderRadius: "4px",
+                          }}
+                        />
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell sx={{ minWidth: 220, maxWidth: 360, wordBreak: "break-word" }}>
+                      <Tooltip title={row.action_point} placement="top-start" arrow enterDelay={400}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontWeight: 600,
+                            color: colorTokens.text.primary,
+                            fontSize: "0.82rem",
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          {row.action_point}
+                        </Typography>
+                      </Tooltip>
+                      {row.key_deliverable && (
+                        <Typography variant="caption" sx={{ color: colorTokens.text.muted, display: "block", mt: 0.25 }}>
+                          Deliverable: {row.key_deliverable}
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontWeight: 500, fontSize: "0.8rem" }}>
+                        {row.owner?.full_name || row.owner_name_override || "Unassigned"}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontWeight: 600, fontSize: "0.8rem", color: colorTokens.text.primary }}>
+                        {reviewerName}
+                      </Typography>
+                      {reviewerEmail && (
+                        <Typography variant="caption" sx={{ color: colorTokens.text.muted, fontSize: "0.7rem", display: "block" }}>
+                          {reviewerEmail}
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell sx={{ fontSize: "0.78rem", color: colorTokens.text.secondary }}>
+                      {assignmentDate}
+                    </TableCell>
+                    <TableCell>
+                      {getReviewStatusChip(row.review_workflow_status || row.active_review?.status)}
+                    </TableCell>
+                    <TableCell sx={{ minWidth: 240, maxWidth: 380, wordBreak: "break-word" }}>
+                      {findings || recommendations ? (
+                        <Box>
+                          {findings && (
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontSize: "0.78rem",
+                                color: colorTokens.text.primary,
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                lineHeight: 1.35,
+                              }}
+                            >
+                              {findings}
+                            </Typography>
+                          )}
+                          {recommendations && (
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: "#0369A1",
+                                fontWeight: 600,
+                                display: "-webkit-box",
+                                WebkitLineClamp: 1,
+                                WebkitBoxOrient: "vertical",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                mt: 0.25,
+                              }}
+                            >
+                              Rec: {recommendations}
+                            </Typography>
+                          )}
+                        </Box>
+                      ) : (
+                        <Typography variant="caption" sx={{ color: colorTokens.text.muted, fontStyle: "italic" }}>
+                          Pending reviewer submission
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell sx={{ fontSize: "0.78rem", fontWeight: 600 }}>
+                      {row.current_target_date}
+                    </TableCell>
+                    <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                      <Tooltip title="View Full Task Page" arrow>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleRowClick(row)}
+                          sx={{ color: colorTokens.primary.main }}
+                        >
+                          <VisibilityOutlinedIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             ) : (
               actions.map((row) => {
                 const isItemSelected = selectedTaskIds.includes(row.id);
@@ -690,7 +951,47 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
                         {row.current_progress_percent || 0}%
                       </Typography>
                     </TableCell>
-                    <TableCell>{getStatusChip(row.status)}</TableCell>
+                    <TableCell>
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, alignItems: "flex-start" }}>
+                        {getStatusChip(row.status)}
+                        {row.review_workflow_status && row.review_workflow_status !== "None" && (
+                          <Chip
+                            label={row.review_workflow_status}
+                            size="small"
+                            sx={{
+                              fontWeight: 700,
+                              fontSize: "0.68rem",
+                              height: 20,
+                              bgcolor:
+                                row.review_workflow_status === "Approved"
+                                  ? "#F0FDF4"
+                                  : row.review_workflow_status === "Rework Required"
+                                  ? "#FEF2F2"
+                                  : row.review_workflow_status === "Awaiting Final Approval"
+                                  ? "#F0F9FF"
+                                  : "#EFF6FF",
+                              color:
+                                row.review_workflow_status === "Approved"
+                                  ? "#166534"
+                                  : row.review_workflow_status === "Rework Required"
+                                  ? "#991B1B"
+                                  : row.review_workflow_status === "Awaiting Final Approval"
+                                  ? "#0369A1"
+                                  : "#1D4ED8",
+                              border: `1px solid ${
+                                row.review_workflow_status === "Approved"
+                                  ? "#BBF7D0"
+                                  : row.review_workflow_status === "Rework Required"
+                                  ? "#FECACA"
+                                  : row.review_workflow_status === "Awaiting Final Approval"
+                                  ? "#BAE6FD"
+                                  : "#BFDBFE"
+                              }`,
+                            }}
+                          />
+                        )}
+                      </Box>
+                    </TableCell>
                     <TableCell>{getEvidenceStatusChip(row.evidence_status, row.evidence_required)}</TableCell>
                     <TableCell>{getPriorityChip(row.priority)}</TableCell>
                     <TableCell>{getBucketChip(row.ageing_bucket, row.ageing_days)}</TableCell>

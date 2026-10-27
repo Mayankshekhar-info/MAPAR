@@ -170,9 +170,50 @@ class GovernanceActionPointSerializer(serializers.ModelSerializer):
     )
     assigned_by = SimpleUserSerializer(read_only=True)
     created_by = SimpleUserSerializer(read_only=True)
+    assigned_reviewer = SimpleUserSerializer(read_only=True)
     revisions = GovernanceTargetRevisionSerializer(many=True, read_only=True)
     evidence_items = GovernanceEvidenceSerializer(many=True, read_only=True)
     weekly_updates = GovernanceWeeklyUpdateSerializer(many=True, read_only=True)
+    active_review = serializers.SerializerMethodField()
+
+    def get_active_review(self, obj):
+        rev = (
+            obj.task_reviews.select_related(
+                "assigned_reviewer",
+                "requested_by",
+                "submitted_for_verification_by",
+                "verified_by",
+                "approved_by",
+            )
+            .order_by("-assigned_at")
+            .first()
+        )
+        if not rev:
+            return None
+        reviewer_name = (
+            rev.assigned_reviewer.get_full_name() or rev.assigned_reviewer.username
+            if rev.assigned_reviewer
+            else "Unassigned"
+        )
+        return {
+            "id": rev.id,
+            "status": rev.status,
+            "reviewer_name": reviewer_name,
+            "reviewer_id": rev.assigned_reviewer_id,
+            "reviewer_email": rev.assigned_reviewer.email if rev.assigned_reviewer else "",
+            "assigned_at": rev.assigned_at,
+            "instructions": rev.instructions,
+            "submission_notes": rev.submission_notes,
+            "submitted_for_verification_at": rev.submitted_for_verification_at,
+            "review_notes": rev.review_notes,
+            "recommendations": getattr(rev, "recommendations", ""),
+            "reviewer_decision": rev.reviewer_decision,
+            "verified_at": rev.verified_at,
+            "approver_decision": rev.approver_decision,
+            "approver_comments": rev.approver_comments,
+            "approved_at": rev.approved_at,
+            "submitted_at": rev.submitted_at,
+        }
 
     def to_internal_value(self, data):
         data_copy = dict(data) if isinstance(data, dict) else data
@@ -206,6 +247,8 @@ class GovernanceActionPointSerializer(serializers.ModelSerializer):
             "owner_id",
             "owner_name_override",
             "assigned_by",
+            "assigned_reviewer",
+            "review_workflow_status",
             "raised_date",
             "target_closure_date",
             "current_target_date",
@@ -226,6 +269,7 @@ class GovernanceActionPointSerializer(serializers.ModelSerializer):
             "revisions",
             "evidence_items",
             "weekly_updates",
+            "active_review",
             "created_by",
             "created_at",
             "updated_at",
@@ -233,6 +277,9 @@ class GovernanceActionPointSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "action_id",
+            "active_review",
+            "assigned_reviewer",
+            "review_workflow_status",
             "current_target_date",
             "revision_count",
             "ageing_days",
@@ -343,5 +390,93 @@ class CreateTargetRevisionRequestSerializer(serializers.Serializer):
 class ReviewTargetRevisionRequestSerializer(serializers.Serializer):
     decision = serializers.ChoiceField(choices=["Approved", "Rejected"], required=True)
     reviewer_comment = serializers.CharField(required=False, allow_blank=True, default="", max_length=1000)
+
+
+class GovernanceTaskReviewSerializer(serializers.ModelSerializer):
+    assigned_reviewer = SimpleUserSerializer(read_only=True)
+    requested_by = SimpleUserSerializer(read_only=True)
+    submitted_by = SimpleUserSerializer(read_only=True)
+    submitted_for_verification_by = SimpleUserSerializer(read_only=True)
+    verified_by = SimpleUserSerializer(read_only=True)
+    approved_by = SimpleUserSerializer(read_only=True)
+    action_id = serializers.CharField(source="action_point.action_id", read_only=True)
+    action_point_title = serializers.CharField(source="action_point.action_point", read_only=True)
+
+    class Meta:
+        from apps.governance.models import GovernanceTaskReview
+        model = GovernanceTaskReview
+        fields = [
+            "id",
+            "action_point",
+            "action_id",
+            "action_point_title",
+            "assigned_reviewer",
+            "requested_by",
+            "assigned_at",
+            "instructions",
+            "status",
+            "submission_notes",
+            "submitted_for_verification_at",
+            "submitted_for_verification_by",
+            "review_notes",
+            "recommendations",
+            "reviewer_decision",
+            "verified_at",
+            "verified_by",
+            "approver_decision",
+            "approver_comments",
+            "approved_at",
+            "approved_by",
+            "submitted_by",
+            "submitted_at",
+        ]
+        read_only_fields = [
+            "id",
+            "action_point",
+            "action_id",
+            "action_point_title",
+            "assigned_reviewer",
+            "requested_by",
+            "assigned_at",
+            "submitted_for_verification_by",
+            "submitted_for_verification_at",
+            "verified_by",
+            "verified_at",
+            "approved_by",
+            "approved_at",
+            "submitted_by",
+            "submitted_at",
+        ]
+
+
+class AssignTaskReviewSerializer(serializers.Serializer):
+    reviewer_id = OwnerAssignmentField(required=True, help_text="Registered application user ID, username, or email")
+    instructions = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
+
+
+class SubmitReviewSerializer(serializers.Serializer):
+    findings = serializers.CharField(required=True, allow_blank=False, max_length=5000, help_text="Reviewer findings and observations")
+    recommendations = serializers.CharField(required=False, allow_blank=True, default="", max_length=3000, help_text="Reviewer recommendations and corrective actions")
+    review_notes = serializers.CharField(required=False, allow_blank=True, default="", max_length=5000)
+
+
+class UpdateTaskReviewSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=["Pending Review", "In Review", "Reviewed"], required=True)
+    review_notes = serializers.CharField(required=False, allow_blank=True, default="", max_length=5000)
+
+
+class SubmitForVerificationSerializer(serializers.Serializer):
+    submission_notes = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
+
+
+class VerifyReviewSerializer(serializers.Serializer):
+    outcome = serializers.ChoiceField(choices=["Verified", "Rework Required"], required=True)
+    review_notes = serializers.CharField(required=False, allow_blank=True, default="", max_length=5000)
+
+
+class ApproveReviewSerializer(serializers.Serializer):
+    decision = serializers.ChoiceField(choices=["Approved", "Rework Required"], required=True)
+    comments = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
+
 
 

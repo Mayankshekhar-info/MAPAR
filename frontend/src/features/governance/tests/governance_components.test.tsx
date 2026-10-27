@@ -13,8 +13,11 @@ import { GovernanceExecutionCard } from "../components/GovernanceExecutionCard";
 import { GovernancePeriodControl } from "../components/GovernancePeriodControl";
 import { WeeklyProgressTimeline } from "../components/WeeklyProgressTimeline";
 import { ActionOwnerTasksPage } from "../pages/ActionOwnerTasksPage";
+import { TaskReviewsCard } from "../components/TaskReviewsCard";
+import { AssignTaskReviewModal } from "../components/AssignTaskReviewModal";
+import { SubmitTaskReviewModal } from "../components/SubmitTaskReviewModal";
 import { governanceService } from "../api/governanceService";
-import { MyProgressMetrics, GovernanceActionPoint, GovernanceMetrics, OwnerDistribution } from "../types/governance.types";
+import { MyProgressMetrics, GovernanceActionPoint, GovernanceMetrics, OwnerDistribution, GovernanceTaskReview } from "../types/governance.types";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 
@@ -704,7 +707,7 @@ describe("ActionOwnerTasksPage Component", () => {
     // Verify Send Email button is rendered in the owner summary/header area
     const sendEmailBtn = screen.getByRole("button", { name: /Send Email/i });
     expect(sendEmailBtn).toBeInTheDocument();
-  });
+  }, 15000);
 
   it("opens SendOwnerEmailModal and displays eligible tasks preview when Send Email is clicked", async () => {
     vi.spyOn(governanceService, "getActions").mockResolvedValue({
@@ -777,6 +780,131 @@ describe("ActionOwnerTasksPage Component", () => {
     expect(within(dialog).getByText("CLOSED TASKS EXCLUDED")).toBeInTheDocument();
   });
 });
+
+describe("Task Reviews & Reviewer Workflow Integration", () => {
+  const sampleActiveReview: GovernanceTaskReview = {
+    id: 501,
+    action_point: 101,
+    action_id: "ACT-00101",
+    action_point_title: "Quarterly Safety Protocol Review",
+    assigned_reviewer: {
+      id: 8,
+      username: "sgupta",
+      full_name: "Shweta Gupta",
+      email: "shweta@mapar.com",
+      role: "Auditor",
+    },
+    requested_by: {
+      id: 1,
+      username: "admin",
+      full_name: "Admin User",
+      email: "admin@mapar.com",
+      role: "Super Admin",
+    },
+    assigned_at: "2026-10-20T10:00:00Z",
+    instructions: "Please verify valve pressure calibration logs against safety threshold.",
+    status: "In Review",
+    review_notes: "Preliminary inspection indicates all pressure gauges are within standard threshold.",
+    submitted_by: {
+      id: 8,
+      username: "sgupta",
+      full_name: "Shweta Gupta",
+      email: "shweta@mapar.com",
+      role: "Auditor",
+    },
+    submitted_at: "2026-10-21T14:30:00Z",
+  };
+
+  const samplePastReview: GovernanceTaskReview = {
+    id: 500,
+    action_point: 101,
+    action_id: "ACT-00101",
+    action_point_title: "Quarterly Safety Protocol Review",
+    assigned_reviewer: {
+      id: 9,
+      username: "mverma",
+      full_name: "Manoj Verma",
+      email: "manoj@mapar.com",
+      role: "Auditor",
+    },
+    requested_by: {
+      id: 1,
+      username: "admin",
+      full_name: "Admin User",
+      email: "admin@mapar.com",
+      role: "Super Admin",
+    },
+    assigned_at: "2026-10-10T10:00:00Z",
+    instructions: "Initial cycle review",
+    status: "Reviewed",
+    review_notes: "All clear for week 41.",
+    submitted_by: {
+      id: 9,
+      username: "mverma",
+      full_name: "Manoj Verma",
+      email: "manoj@mapar.com",
+      role: "Auditor",
+    },
+    submitted_at: "2026-10-12T11:00:00Z",
+  };
+
+  it("renders TaskReviewsCard with active review status, reviewer info, instructions, and notes", () => {
+    const handleOpenAssign = vi.fn();
+    const handleOpenSubmit = vi.fn();
+
+    render(
+      <TaskReviewsCard
+        taskReviews={[sampleActiveReview, samplePastReview]}
+        activeReview={sampleActiveReview}
+        canAssignReview={true}
+        canSubmitReview={true}
+        onOpenAssignModal={handleOpenAssign}
+        onOpenSubmitModal={handleOpenSubmit}
+      />
+    );
+
+    expect(screen.getByText(/Review, Verification & Approval Workflow|Task Reviews/i)).toBeInTheDocument();
+    expect(screen.getByText("In Review")).toBeInTheDocument();
+    expect(screen.getByText(/Shweta Gupta/i)).toBeInTheDocument();
+    expect(screen.getByText(/Please verify valve pressure calibration logs/i)).toBeInTheDocument();
+    expect(screen.getByText(/Preliminary inspection indicates all pressure gauges/i)).toBeInTheDocument();
+
+    // Trigger submit review button
+    const submitBtn = screen.getByRole("button", { name: /Submit Review/i });
+    expect(submitBtn).toBeInTheDocument();
+    fireEvent.click(submitBtn);
+    expect(handleOpenSubmit).toHaveBeenCalledWith(sampleActiveReview);
+
+    // Expand previous reviews history
+    const historyBtn = screen.getByRole("button", { name: /Show Previous Review History/i });
+    expect(historyBtn).toBeInTheDocument();
+    fireEvent.click(historyBtn);
+    expect(screen.getByText(/Review by Manoj Verma/i)).toBeInTheDocument();
+    expect(screen.getByText(/All clear for week 41/i)).toBeInTheDocument();
+  });
+
+  it("renders empty state when task has no reviews and allows assigning for review", () => {
+    const handleOpenAssign = vi.fn();
+    const handleOpenSubmit = vi.fn();
+
+    render(
+      <TaskReviewsCard
+        taskReviews={[]}
+        activeReview={null}
+        canAssignReview={true}
+        canSubmitReview={false}
+        onOpenAssignModal={handleOpenAssign}
+        onOpenSubmitModal={handleOpenSubmit}
+      />
+    );
+
+    expect(screen.getByText(/No formal review/i)).toBeInTheDocument();
+    const assignBtn = screen.getByRole("button", { name: /Assign for Review/i });
+    fireEvent.click(assignBtn);
+    expect(handleOpenAssign).toHaveBeenCalled();
+  });
+});
+
 
 
 

@@ -1148,46 +1148,84 @@ export const ActionOwnerTasksPage: React.FC<ActionOwnerTasksPageProps> = ({ mode
 
                       {/* Status */}
                       <TableCell sx={{ verticalAlign: "middle" }}>
-                        {act.status === "Closed" ? (
-                          <Chip
-                            label="Closed"
-                            size="small"
-                            sx={{
-                              fontWeight: 700,
-                              fontSize: "0.72rem",
-                              height: 22,
-                              bgcolor: "#ECFDF5",
-                              color: "#047857",
-                              border: "1px solid #A7F3D0",
-                            }}
-                          />
-                        ) : act.status === "WIP" ? (
-                          <Chip
-                            label="WIP"
-                            size="small"
-                            sx={{
-                              fontWeight: 700,
-                              fontSize: "0.72rem",
-                              height: 22,
-                              bgcolor: "#FEF3C7",
-                              color: "#B45309",
-                              border: "1px solid #FDE68A",
-                            }}
-                          />
-                        ) : (
-                          <Chip
-                            label="Open"
-                            size="small"
-                            sx={{
-                              fontWeight: 700,
-                              fontSize: "0.72rem",
-                              height: 22,
-                              bgcolor: "#EFF6FF",
-                              color: "#1D4ED8",
-                              border: "1px solid #BFDBFE",
-                            }}
-                          />
-                        )}
+                        <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5, alignItems: "flex-start" }}>
+                          {act.status === "Closed" ? (
+                            <Chip
+                              label="Closed"
+                              size="small"
+                              sx={{
+                                fontWeight: 700,
+                                fontSize: "0.72rem",
+                                height: 22,
+                                bgcolor: "#ECFDF5",
+                                color: "#047857",
+                                border: "1px solid #A7F3D0",
+                              }}
+                            />
+                          ) : act.status === "WIP" ? (
+                            <Chip
+                              label="WIP"
+                              size="small"
+                              sx={{
+                                fontWeight: 700,
+                                fontSize: "0.72rem",
+                                height: 22,
+                                bgcolor: "#FEF3C7",
+                                color: "#B45309",
+                                border: "1px solid #FDE68A",
+                              }}
+                            />
+                          ) : (
+                            <Chip
+                              label="Open"
+                              size="small"
+                              sx={{
+                                fontWeight: 700,
+                                fontSize: "0.72rem",
+                                height: 22,
+                                bgcolor: "#EFF6FF",
+                                color: "#1D4ED8",
+                                border: "1px solid #BFDBFE",
+                              }}
+                            />
+                          )}
+                          {act.review_workflow_status && act.review_workflow_status !== "None" && (
+                            <Chip
+                              label={act.review_workflow_status}
+                              size="small"
+                              sx={{
+                                fontWeight: 700,
+                                fontSize: "0.68rem",
+                                height: 20,
+                                bgcolor:
+                                  act.review_workflow_status === "Approved"
+                                    ? "#F0FDF4"
+                                    : act.review_workflow_status === "Rework Required"
+                                    ? "#FEF2F2"
+                                    : act.review_workflow_status === "Awaiting Final Approval"
+                                    ? "#F0F9FF"
+                                    : "#EFF6FF",
+                                color:
+                                  act.review_workflow_status === "Approved"
+                                    ? "#166534"
+                                    : act.review_workflow_status === "Rework Required"
+                                    ? "#991B1B"
+                                    : act.review_workflow_status === "Awaiting Final Approval"
+                                    ? "#0369A1"
+                                    : "#1D4ED8",
+                                border: `1px solid ${
+                                  act.review_workflow_status === "Approved"
+                                    ? "#BBF7D0"
+                                    : act.review_workflow_status === "Rework Required"
+                                    ? "#FECACA"
+                                    : act.review_workflow_status === "Awaiting Final Approval"
+                                    ? "#BAE6FD"
+                                    : "#BFDBFE"
+                                }`,
+                              }}
+                            />
+                          )}
+                        </Box>
                       </TableCell>
 
                       {/* Progress */}

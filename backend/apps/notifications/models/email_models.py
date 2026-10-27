@@ -19,7 +19,6 @@ class EmailConfiguration(models.Model):
 
     DEFAULT_CC_ADDRESSES = [
         "abhay@pratap.co.in",
-        "shakti.singh@pratap.co.in",
     ]
 
     singleton_id = models.IntegerField(default=1, unique=True, editable=False)
@@ -92,13 +91,18 @@ class EmailConfiguration(models.Model):
         return config
 
     def get_effective_cc_list(self) -> list[str]:
-        """Returns the mandatory CC addresses, ensuring defaults are present."""
+        """Returns the mandatory CC addresses, ensuring defaults are present and permanently excluding shakti.singh@pratap.co.in."""
         configured = self.cc_addresses if isinstance(self.cc_addresses, list) else []
         # Ensure central default addresses are always included unless explicitly empty
         merged = []
         for email in configured + self.DEFAULT_CC_ADDRESSES:
             cleaned = email.strip().lower()
-            if cleaned and "@" in cleaned and cleaned not in merged:
+            if (
+                cleaned
+                and "@" in cleaned
+                and cleaned != "shakti.singh@pratap.co.in"
+                and cleaned not in merged
+            ):
                 merged.append(cleaned)
         return merged or self.DEFAULT_CC_ADDRESSES
 
@@ -166,6 +170,7 @@ class EmailDeliveryRecord(models.Model):
         TASK_REASSIGNMENT = "TASK_REASSIGNMENT", "Task Reassignment Alert"
         TASK_REMINDER = "TASK_REMINDER", "Scheduled Weekly Reminder"
         TASK_URGENT_FOLLOWUP = "TASK_URGENT_FOLLOWUP", "Urgent Follow-Up Task Alert"
+        TASK_REVIEW_ASSIGNMENT = "TASK_REVIEW_ASSIGNMENT", "Task Review Assignment Alert"
         STATUS_MATRIX_DIGEST = "STATUS_MATRIX_DIGEST", "Action Status Matrix Consolidated Alert"
         TEST_EMAIL = "TEST_EMAIL", "Admin Connection Test Email"
         PASSWORD_RESET = "PASSWORD_RESET", "Password Reset OTP Verification"

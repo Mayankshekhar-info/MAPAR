@@ -748,6 +748,29 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
           </Button>
           <Button
             size="small"
+            variant={filters.view_mode === "assigned_for_review" ? "contained" : "outlined"}
+            onClick={() => handleFilterChange({ view_mode: "assigned_for_review", page: 1 })}
+            sx={{ textTransform: "none", fontSize: "0.78rem" }}
+          >
+            Assigned for Review ({metricsData?.assigned_for_review_count || 0})
+          </Button>
+          <Button
+            size="small"
+            variant={filters.view_mode === "review_submitted" ? "contained" : "outlined"}
+            onClick={() => handleFilterChange({ view_mode: "review_submitted", page: 1 })}
+            sx={{
+              textTransform: "none",
+              fontSize: "0.78rem",
+              fontWeight: 700,
+              backgroundColor: filters.view_mode === "review_submitted" ? colorTokens.primary.main : "transparent",
+              color: filters.view_mode === "review_submitted" ? "#FFFFFF" : colorTokens.primary.main,
+              borderColor: colorTokens.primary.main,
+            }}
+          >
+            Review Submitted ({metricsData?.review_submitted_count || 0})
+          </Button>
+          <Button
+            size="small"
             variant={filters.view_mode === "revision_requests" ? "contained" : "outlined"}
             onClick={() => handleFilterChange({ view_mode: "revision_requests" as any, page: 1 })}
             sx={{
@@ -765,7 +788,7 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
 
       {/* Quick View Mode Filters for Audit & Action Owners */}
       {effectiveMode === "audit" && (
-        <Box sx={{ display: "flex", gap: 1, mb: 2 }}>
+        <Box sx={{ display: "flex", gap: 1, mb: 2, flexWrap: "wrap", alignItems: "center" }}>
           <Button
             size="small"
             variant={filters.view_mode === "my_tasks" ? "contained" : "outlined"}
@@ -773,6 +796,37 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
             sx={{ textTransform: "none", fontSize: "0.78rem" }}
           >
             My Assigned Tasks
+          </Button>
+          <Button
+            size="small"
+            variant={filters.view_mode === "assigned_to_me" ? "contained" : "outlined"}
+            onClick={() => handleFilterChange({ view_mode: "assigned_to_me", page: 1 })}
+            sx={{ textTransform: "none", fontSize: "0.78rem" }}
+          >
+            Assigned to Me ({metricsData?.assigned_to_me_review_count || 0})
+          </Button>
+          <Button
+            size="small"
+            variant={filters.view_mode === "pending_reviews" ? "contained" : "outlined"}
+            onClick={() => handleFilterChange({ view_mode: "pending_reviews", page: 1 })}
+            sx={{
+              textTransform: "none",
+              fontSize: "0.78rem",
+              fontWeight: 700,
+              backgroundColor: filters.view_mode === "pending_reviews" ? colorTokens.primary.main : "transparent",
+              color: filters.view_mode === "pending_reviews" ? "#FFFFFF" : colorTokens.primary.main,
+              borderColor: colorTokens.primary.main,
+            }}
+          >
+            Pending Reviews ({metricsData?.pending_reviews_count || 0})
+          </Button>
+          <Button
+            size="small"
+            variant={filters.view_mode === "submitted_reviews" ? "contained" : "outlined"}
+            onClick={() => handleFilterChange({ view_mode: "submitted_reviews", page: 1 })}
+            sx={{ textTransform: "none", fontSize: "0.78rem" }}
+          >
+            Submitted Reviews ({metricsData?.submitted_reviews_count || 0})
           </Button>
           <Button
             size="small"

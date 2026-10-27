@@ -96,6 +96,8 @@ export interface GovernanceActionPoint {
   current_target_date: string;
   revision_count: number;
   status: "Open" | "WIP" | "Closed";
+  review_workflow_status?: "None" | "Review Assigned" | "Submitted for Review" | "Review Submitted" | "Rework Required" | "Awaiting Final Approval" | "Approved";
+  assigned_reviewer?: SimpleUser | null;
   actual_closure_date?: string | null;
   current_progress_percent?: number;
   ageing_days: number;
@@ -114,6 +116,18 @@ export interface GovernanceActionPoint {
   created_by?: SimpleUser | null;
   created_at: string;
   updated_at: string;
+  active_review?: {
+    id: number;
+    status: "Pending Review" | "In Review" | "Reviewed" | "Review Submitted" | "Verified" | "Rework Required" | "Approved" | string;
+    reviewer_name: string;
+    reviewer_id?: number | null;
+    reviewer_email?: string;
+    assigned_at: string;
+    instructions?: string;
+    review_notes?: string;
+    recommendations?: string;
+    submitted_at?: string | null;
+  } | null;
 }
 
 export interface TaskProgressPoint {
@@ -132,11 +146,21 @@ export interface TaskFullDetailResponse {
   revisions: GovernanceTargetRevision[];
   evidence_items: GovernanceEvidenceItem[];
   revision_requests?: GovernanceTargetRevisionRequest[];
+  task_reviews?: GovernanceTaskReview[];
+  active_review?: GovernanceTaskReview | null;
+  can_assign_review?: boolean;
+  can_submit_for_verification?: boolean;
+  can_verify_review?: boolean;
+  can_approve_review?: boolean;
+  can_close_task?: boolean;
+  closure_block_reason?: string | null;
+  can_submit_review?: boolean;
   can_review_revision?: boolean;
   can_request_revision?: boolean;
   can_review_evidence?: boolean;
   has_pending_revision?: boolean;
 }
+
 
 export interface CircleDistribution {
   circle__id: number;
@@ -261,6 +285,11 @@ export interface GovernanceMetrics {
   created_by_me_count?: number;
   my_assigned_count?: number;
   missing_weekly_count?: number;
+  assigned_for_review_count?: number;
+  review_submitted_count?: number;
+  assigned_to_me_review_count?: number;
+  pending_reviews_count?: number;
+  submitted_reviews_count?: number;
   pending_evidence_count: number;
   accepted_evidence_count: number;
   rework_evidence_count: number;
@@ -317,7 +346,7 @@ export interface GovernanceFilterParams {
   owner_name?: string;
   status?: string;
   evidence_status?: string;
-  view_mode?: "all" | "my_tasks" | "created_by" | "created_by_me" | "missing_weekly" | "evidence_review" | "revision_requests";
+  view_mode?: "all" | "my_tasks" | "created_by" | "created_by_me" | "assigned_for_review" | "review_submitted" | "assigned_to_me" | "pending_reviews" | "submitted_reviews" | "missing_weekly" | "evidence_review" | "revision_requests";
   hierarchy_level?: string;
   hierarchy_node_id?: number | null;
   priority?: string;
@@ -650,6 +679,63 @@ export interface OwnerEmailSendResponse {
   action_ids?: string[];
   record_id?: number;
 }
+
+export interface GovernanceTaskReview {
+  id: number;
+  action_point: number;
+  action_id: string;
+  action_point_title: string;
+  assigned_reviewer?: SimpleUser | null;
+  requested_by?: SimpleUser | null;
+  assigned_at: string;
+  instructions: string;
+  status: "Pending Review" | "In Review" | "Reviewed" | "Review Submitted" | "Submitted for Review" | "Verified" | "Rework Required" | "Approved";
+  submission_notes?: string;
+  submitted_for_verification_at?: string | null;
+  submitted_for_verification_by?: SimpleUser | null;
+  review_notes: string;
+  recommendations?: string;
+  reviewer_decision?: "Verified" | "Rework Required" | "Review Submitted" | string;
+  verified_at?: string | null;
+  verified_by?: SimpleUser | null;
+  approver_decision?: "Approved" | "Rework Required" | string;
+  approver_comments?: string;
+  approved_at?: string | null;
+  approved_by?: SimpleUser | null;
+  submitted_by?: SimpleUser | null;
+  submitted_at?: string | null;
+}
+
+export interface AssignTaskReviewPayload {
+  reviewer_id: number | string;
+  instructions?: string;
+}
+
+export interface SubmitReviewPayload {
+  findings: string;
+  recommendations?: string;
+  review_notes?: string;
+}
+
+export interface UpdateTaskReviewPayload {
+  status: "Pending Review" | "In Review" | "Reviewed";
+  review_notes?: string;
+}
+
+export interface SubmitForVerificationPayload {
+  submission_notes?: string;
+}
+
+export interface VerifyReviewPayload {
+  outcome: "Verified" | "Rework Required";
+  review_notes?: string;
+}
+
+export interface ApproveReviewPayload {
+  decision: "Approved" | "Rework Required";
+  comments?: string;
+}
+
 
 
 

@@ -5,6 +5,7 @@ from .governance_models import (
     GovernanceWeeklyUpdate,
     GovernanceBulkOperationLog,
     GovernanceTargetRevisionRequest,
+    GovernanceTaskReview,
 )
 
 __all__ = [
@@ -14,5 +15,7 @@ __all__ = [
     "GovernanceWeeklyUpdate",
     "GovernanceBulkOperationLog",
     "GovernanceTargetRevisionRequest",
+    "GovernanceTaskReview",
 ]
+
 

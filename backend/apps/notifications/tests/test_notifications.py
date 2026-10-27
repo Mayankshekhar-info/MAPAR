@@ -88,7 +88,7 @@ class TestEmailConfigurationAndModels:
         assert config.singleton_id == 1
         effective = config.get_effective_settings()
         assert "abhay@pratap.co.in" in effective["cc_addresses"]
-        assert "shakti.singh@pratap.co.in" in effective["cc_addresses"]
+        assert "shakti.singh@pratap.co.in" not in effective["cc_addresses"]
         assert effective["has_password"] is False
 
     def test_idempotency_prevents_duplicate_records(self, action_point):
@@ -278,7 +278,7 @@ class TestNotificationAPIs:
         data = resp.json()
         assert data["success"] is True
         assert "abhay@pratap.co.in" in data["configuration"]["cc_addresses"]
-        assert "shakti.singh@pratap.co.in" in data["configuration"]["cc_addresses"]
+        assert "shakti.singh@pratap.co.in" not in data["configuration"]["cc_addresses"]
 
         # POST update
         payload = {
@@ -351,29 +351,22 @@ class TestNotificationAPIs:
 
 
 @pytest.mark.django_db
-class TestShaktiSinghCCSwitch:
-    """Verifies configurable Enable/Disable switch for shakti.singh@pratap.co.in in CC."""
+class TestShaktiSinghCCExclusion:
+    """Verifies that shakti.singh@pratap.co.in is permanently excluded from CC across all email dispatch paths."""
 
-    def test_default_behavior_is_enabled(self, monkeypatch):
-        monkeypatch.delenv("CC_SHAKTI_SINGH_ENABLED", raising=False)
-        monkeypatch.delenv("SMTP_CC_SHAKTI_SINGH_ENABLED", raising=False)
-        assert SMTPService.is_shakti_singh_cc_enabled() is True
-
-    def test_disabled_via_env_var_excludes_shakti_from_cc(self, monkeypatch):
-        monkeypatch.setenv("CC_SHAKTI_SINGH_ENABLED", "False")
-
+    def test_default_behavior_excludes_shakti_from_cc(self):
         with patch("smtplib.SMTP") as mock_smtp_class:
             mock_server = MagicMock()
             mock_smtp_class.return_value = mock_server
             mock_smtp_class.return_value.__enter__.return_value = mock_server
 
             success, record = SMTPService.send_html_email(
-                recipient_email="recipient_dis@example.com",
-                subject="Test Subject Disabled",
+                recipient_email="recipient_default@example.com",
+                subject="Test Subject Default",
                 plain_text="Plain body",
                 html_content="<p>Html body</p>",
                 custom_config={"host": "smtp.test.com"},
-                idempotency_key="test_shakti_disabled_env",
+                idempotency_key="test_shakti_default_exclusion",
             )
 
             assert success is True
@@ -386,66 +379,40 @@ class TestShaktiSinghCCSwitch:
             sendmail_call = mock_server.sendmail.call_args
             assert sendmail_call is not None
             _, all_recipients, _ = sendmail_call[0]
-            assert "recipient_dis@example.com" in all_recipients
+            assert "recipient_default@example.com" in all_recipients
             assert "abhay@pratap.co.in" in all_recipients
             assert "shakti.singh@pratap.co.in" not in all_recipients
 
-    def test_enabled_via_env_var_includes_shakti_in_cc(self, monkeypatch):
-        monkeypatch.setenv("CC_SHAKTI_SINGH_ENABLED", "True")
-
+    def test_explicitly_passed_in_cc_list_is_filtered_out(self):
         with patch("smtplib.SMTP") as mock_smtp_class:
             mock_server = MagicMock()
             mock_smtp_class.return_value = mock_server
             mock_smtp_class.return_value.__enter__.return_value = mock_server
 
             success, record = SMTPService.send_html_email(
-                recipient_email="recipient_enb@example.com",
-                subject="Test Subject Enabled",
+                recipient_email="recipient_explicit@example.com",
+                subject="Test Subject Explicit CC",
                 plain_text="Plain body",
                 html_content="<p>Html body</p>",
+                cc_list=["shakti.singh@pratap.co.in", "other.user@pratap.co.in"],
                 custom_config={"host": "smtp.test.com"},
-                idempotency_key="test_shakti_enabled_env",
-            )
-
-            assert success is True
-            assert "shakti.singh@pratap.co.in" in record.cc_emails
-            assert "abhay@pratap.co.in" in record.cc_emails
-
-            sendmail_call = mock_server.sendmail.call_args
-            assert sendmail_call is not None
-            _, all_recipients, _ = sendmail_call[0]
-            assert "shakti.singh@pratap.co.in" in all_recipients
-            assert "abhay@pratap.co.in" in all_recipients
-
-    def test_disabled_via_custom_config_override(self):
-        with patch("smtplib.SMTP") as mock_smtp_class:
-            mock_server = MagicMock()
-            mock_smtp_class.return_value = mock_server
-            mock_smtp_class.return_value.__enter__.return_value = mock_server
-
-            success, record = SMTPService.send_html_email(
-                recipient_email="recipient_override@example.com",
-                subject="Test Subject Override",
-                plain_text="Plain body",
-                html_content="<p>Html body</p>",
-                custom_config={"host": "smtp.test.com", "cc_shakti_singh_enabled": False},
-                idempotency_key="test_shakti_override_cfg",
+                idempotency_key="test_shakti_explicit_cc_filtered",
             )
 
             assert success is True
             assert "shakti.singh@pratap.co.in" not in record.cc_emails
+            assert "other.user@pratap.co.in" in record.cc_emails
             assert "abhay@pratap.co.in" in record.cc_emails
 
             sendmail_call = mock_server.sendmail.call_args
             assert sendmail_call is not None
             _, all_recipients, _ = sendmail_call[0]
             assert "shakti.singh@pratap.co.in" not in all_recipients
+            assert "other.user@pratap.co.in" in all_recipients
             assert "abhay@pratap.co.in" in all_recipients
 
-    def test_to_recipient_shakti_is_not_affected_when_cc_disabled(self, monkeypatch):
+    def test_to_recipient_shakti_is_not_affected(self):
         """If shakti.singh is the primary To recipient, he must continue receiving emails."""
-        monkeypatch.setenv("CC_SHAKTI_SINGH_ENABLED", "False")
-
         with patch("smtplib.SMTP") as mock_smtp_class:
             mock_server = MagicMock()
             mock_smtp_class.return_value = mock_server
@@ -468,9 +435,7 @@ class TestShaktiSinghCCSwitch:
             assert "shakti.singh@pratap.co.in" in all_recipients  # As To recipient
             assert "abhay@pratap.co.in" in all_recipients  # In CC
 
-    def test_case_insensitive_and_whitespace_filtering(self, monkeypatch):
-        monkeypatch.setenv("CC_SHAKTI_SINGH_ENABLED", "False")
-
+    def test_case_insensitive_and_whitespace_filtering(self):
         with patch("smtplib.SMTP") as mock_smtp_class:
             mock_server = MagicMock()
             mock_smtp_class.return_value.__enter__.return_value = mock_server

@@ -398,6 +398,7 @@ def test_weekly_update_closure_blocked_without_accepted_evidence(weekly_bulk_set
     action1 = weekly_bulk_setup["action1"]
     action1.evidence_required = True
     action1.evidence_status = GovernanceActionPoint.EvidenceStatus.NOT_SUBMITTED
+    action1.review_workflow_status = GovernanceActionPoint.ReviewWorkflowStatus.APPROVED
     action1.save()
 
     owner = weekly_bulk_setup["owner"]

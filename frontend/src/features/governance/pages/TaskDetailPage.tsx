@@ -24,7 +24,11 @@ import HourglassEmptyIcon from "@mui/icons-material/HourglassEmpty";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import DescriptionOutlinedIcon from "@mui/icons-material/DescriptionOutlined";
 import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
+import RateReviewIcon from "@mui/icons-material/RateReview";
+import SendIcon from "@mui/icons-material/Send";
+import VerifiedIcon from "@mui/icons-material/Verified";
 import dayjs from "dayjs";
+
 
 import { colorTokens, radiusTokens } from "../../../app/theme/tokens";
 import {
@@ -49,13 +53,21 @@ import { RequestTargetRevisionModal } from "../components/RequestTargetRevisionM
 import { ReviewRevisionRequestDialog } from "../components/ReviewRevisionRequestDialog";
 import { MandatoryEvidenceClosureModal } from "../components/MandatoryEvidenceClosureModal";
 import { SendTaskEmailModal } from "../components/SendTaskEmailModal";
+import { AssignTaskReviewModal } from "../components/AssignTaskReviewModal";
+import { SubmitTaskReviewModal } from "../components/SubmitTaskReviewModal";
+import { SubmitForVerificationModal } from "../components/SubmitForVerificationModal";
+import { VerifyReviewModal } from "../components/VerifyReviewModal";
+import { ApproveReviewModal } from "../components/ApproveReviewModal";
+import { TaskReviewsCard } from "../components/TaskReviewsCard";
 import {
   GovernanceEvidenceItem,
   SubmitWeeklyUpdatePayload,
   ReviseTargetPayload,
   ReviewEvidencePayload,
   GovernanceTargetRevisionRequest,
+  GovernanceTaskReview,
 } from "../types/governance.types";
+
 
 export const TaskDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -88,8 +100,15 @@ export const TaskDetailPage: React.FC = () => {
   const [isMandatoryEvidenceModalOpen, setIsMandatoryEvidenceModalOpen] = useState(false);
   const [selectedEvidenceForReview, setSelectedEvidenceForReview] = useState<GovernanceEvidenceItem | null>(null);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [isAssignReviewOpen, setIsAssignReviewOpen] = useState(false);
+  const [isSubmitReviewOpen, setIsSubmitReviewOpen] = useState(false);
+  const [selectedReviewForSubmit, setSelectedReviewForSubmit] = useState<GovernanceTaskReview | null>(null);
+  const [isSubmitForVerificationOpen, setIsSubmitForVerificationOpen] = useState(false);
+  const [isVerifyReviewOpen, setIsVerifyReviewOpen] = useState(false);
+  const [isApproveReviewOpen, setIsApproveReviewOpen] = useState(false);
 
   const [notification, setNotification] = useState<{ message: string; severity: "success" | "error" } | null>(null);
+
 
   if (isLoading) {
     return (
@@ -129,11 +148,21 @@ export const TaskDetailPage: React.FC = () => {
     revisions,
     evidence_items,
     revision_requests = [],
+    task_reviews = [],
+    active_review = null,
+    can_assign_review = true,
+    can_submit_for_verification = false,
+    can_verify_review = false,
+    can_approve_review = false,
+    can_close_task = true,
+    closure_block_reason = null,
+    can_submit_review = false,
     can_review_revision = false,
     can_request_revision = false,
     can_review_evidence = false,
     has_pending_revision = false,
   } = data;
+
 
   const handleDownloadEvidence = async (ev: GovernanceEvidenceItem) => {
     try {
@@ -149,6 +178,15 @@ export const TaskDetailPage: React.FC = () => {
   };
 
   const handleAttemptClose = async () => {
+    // Task closure allowed if review is approved or review submitted, or none
+    const allowedReviewStatuses = ["Approved", "Review Submitted", "Awaiting Final Approval", "None"];
+    if (action.review_workflow_status && !allowedReviewStatuses.includes(action.review_workflow_status)) {
+      setNotification({
+        message: "Task closure is not allowed until reviewer verification and approval or review submission are completed.",
+        severity: "error",
+      });
+      return;
+    }
     if (action.evidence_required && action.evidence_status !== "Accepted") {
       setIsMandatoryEvidenceModalOpen(true);
       return;
@@ -161,7 +199,12 @@ export const TaskDetailPage: React.FC = () => {
       setNotification({ message: "Task marked as Closed successfully.", severity: "success" });
       refetch();
     } catch (err: any) {
-      const msg = err.response?.data?.detail || err.response?.data?.message || err.message || "Failed to close task.";
+      const msg =
+        err.response?.data?.status?.[0] ||
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        err.message ||
+        "Failed to close task.";
       if (msg.toLowerCase().includes("evidence")) {
         setIsMandatoryEvidenceModalOpen(true);
       } else {
@@ -243,6 +286,41 @@ export const TaskDetailPage: React.FC = () => {
                       : colorTokens.status.warning.main,
                 }}
               />
+              {action.review_workflow_status && action.review_workflow_status !== "None" && (
+                <Chip
+                  label={`Workflow: ${action.review_workflow_status}`}
+                  size="small"
+                  sx={{
+                    fontWeight: 700,
+                    fontSize: "0.75rem",
+                    backgroundColor:
+                      action.review_workflow_status === "Approved"
+                        ? "#F0FDF4"
+                        : action.review_workflow_status === "Rework Required"
+                        ? "#FEF2F2"
+                        : action.review_workflow_status === "Awaiting Final Approval"
+                        ? "#F0F9FF"
+                        : "#EFF6FF",
+                    color:
+                      action.review_workflow_status === "Approved"
+                        ? "#166534"
+                        : action.review_workflow_status === "Rework Required"
+                        ? "#991B1B"
+                        : action.review_workflow_status === "Awaiting Final Approval"
+                        ? "#0369A1"
+                        : "#1D4ED8",
+                    border: `1px solid ${
+                      action.review_workflow_status === "Approved"
+                        ? "#BBF7D0"
+                        : action.review_workflow_status === "Rework Required"
+                        ? "#FECACA"
+                        : action.review_workflow_status === "Awaiting Final Approval"
+                        ? "#BAE6FD"
+                        : "#BFDBFE"
+                    }`,
+                  }}
+                />
+              )}
               <Chip
                 label={`Priority: ${action.priority}`}
                 sx={{
@@ -304,26 +382,102 @@ export const TaskDetailPage: React.FC = () => {
 
           {/* Quick Action Buttons */}
           <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
-            {action.status !== "Closed" && (
+            {/* Close Task: Governance Only (Never allowed in Audit Mode) */}
+            {!isAuditMode && action.status !== "Closed" && (() => {
+              const allowedReviewStatuses = ["Approved", "Review Submitted", "Awaiting Final Approval", "None"];
+              const isClosureReviewSatisfied = !action.review_workflow_status || allowedReviewStatuses.includes(action.review_workflow_status);
+              const isEvidenceSatisfied = !action.evidence_required || action.evidence_status === "Accepted";
+              const isClosureBlocked = !isClosureReviewSatisfied || !isEvidenceSatisfied;
+
+              return (
+                <Tooltip
+                  title={
+                    !isClosureReviewSatisfied
+                      ? "Task closure is not allowed until reviewer verification and approval or review submission are completed."
+                      : !isEvidenceSatisfied
+                      ? "Required evidence must be Accepted before closure."
+                      : "Close this task"
+                  }
+                >
+                  <span>
+                    <Button
+                      variant="contained"
+                      startIcon={isClosureBlocked ? <LockOutlinedIcon /> : <CheckCircleIcon />}
+                      onClick={handleAttemptClose}
+                      disabled={updateActionMutation.isPending || isClosureBlocked}
+                      sx={{
+                        backgroundColor: isClosureBlocked ? "#94A3B8" : colorTokens.status.success.main,
+                        color: "#fff",
+                        borderRadius: radiusTokens.sm,
+                        fontWeight: 700,
+                        textTransform: "none",
+                        "&:hover": {
+                          backgroundColor: isClosureBlocked ? "#94A3B8" : colorTokens.status.success.text,
+                        },
+                      }}
+                    >
+                      Close Task
+                    </Button>
+                  </span>
+                </Tooltip>
+              );
+            })()}
+
+            {/* Governance Only Decision Buttons */}
+            {!isAuditMode && action.status !== "Closed" && can_submit_for_verification && (
               <Button
                 variant="contained"
-                startIcon={<CheckCircleIcon />}
-                onClick={handleAttemptClose}
-                disabled={updateActionMutation.isPending}
+                startIcon={<SendIcon />}
+                onClick={() => setIsSubmitForVerificationOpen(true)}
+                sx={{
+                  backgroundColor: "#2563EB",
+                  color: "#fff",
+                  borderRadius: radiusTokens.sm,
+                  fontWeight: 700,
+                  textTransform: "none",
+                  "&:hover": { backgroundColor: "#1D4ED8" },
+                }}
+              >
+                Submit for Review
+              </Button>
+            )}
+
+            {!isAuditMode && action.status !== "Closed" && can_verify_review && (
+              <Button
+                variant="contained"
+                startIcon={<FactCheckIcon />}
+                onClick={() => setIsVerifyReviewOpen(true)}
+                sx={{
+                  backgroundColor: "#0284C7",
+                  color: "#fff",
+                  borderRadius: radiusTokens.sm,
+                  fontWeight: 700,
+                  textTransform: "none",
+                  "&:hover": { backgroundColor: "#0369A1" },
+                }}
+              >
+                Verify Task
+              </Button>
+            )}
+
+            {!isAuditMode && action.status !== "Closed" && can_approve_review && (
+              <Button
+                variant="contained"
+                startIcon={<VerifiedIcon />}
+                onClick={() => setIsApproveReviewOpen(true)}
                 sx={{
                   backgroundColor: colorTokens.status.success.main,
                   color: "#fff",
                   borderRadius: radiusTokens.sm,
                   fontWeight: 700,
                   textTransform: "none",
-                  "&:hover": {
-                    backgroundColor: colorTokens.status.success.text,
-                  },
+                  "&:hover": { backgroundColor: colorTokens.status.success.text },
                 }}
               >
-                Close Task
+                Decision / Return for Rework
               </Button>
             )}
+
             <Button
               variant="outlined"
               startIcon={<EventRepeatIcon />}
@@ -367,7 +521,45 @@ export const TaskDetailPage: React.FC = () => {
             >
               Send Email
             </Button>
+            {!isAuditMode && can_assign_review && (
+              <Button
+                variant="outlined"
+                startIcon={<FactCheckIcon />}
+                onClick={() => setIsAssignReviewOpen(true)}
+                sx={{
+                  color: colorTokens.primary.main,
+                  borderColor: colorTokens.workspace.border,
+                  borderRadius: radiusTokens.sm,
+                  fontWeight: 600,
+                  textTransform: "none",
+                  "&:hover": { borderColor: colorTokens.primary.main, backgroundColor: "#F0F9FF" },
+                }}
+              >
+                {task_reviews.length > 0 ? "Reassign for Review" : "Assign for Review"}
+              </Button>
+            )}
+            {can_submit_review && active_review && (
+              <Button
+                variant="contained"
+                startIcon={<RateReviewIcon />}
+                onClick={() => {
+                  setSelectedReviewForSubmit(active_review);
+                  setIsSubmitReviewOpen(true);
+                }}
+                sx={{
+                  backgroundColor: colorTokens.primary.main,
+                  color: "#fff",
+                  borderRadius: radiusTokens.sm,
+                  fontWeight: 700,
+                  textTransform: "none",
+                  "&:hover": { backgroundColor: colorTokens.primary.dark },
+                }}
+              >
+                {active_review.status === "Review Submitted" ? "Update Review Findings" : "Submit Review"}
+              </Button>
+            )}
             {/* Target Date Action: In Audit mode or for assignees, offer Request Target Date Revision */}
+
             {isAuditMode || !can_review_revision ? (
               <Tooltip
                 title={
@@ -521,7 +713,29 @@ export const TaskDetailPage: React.FC = () => {
 
         {/* Right Column: Evidence Proofs & Revision History */}
         <Grid size={{ xs: 12, md: 5 }}>
+          {/* Dedicated Task Review & Reviewer Notes Card */}
+          <TaskReviewsCard
+            taskReviews={task_reviews}
+            activeReview={active_review}
+            workflowStatus={action.review_workflow_status}
+            isAuditMode={isAuditMode}
+            canAssignReview={!isAuditMode && can_assign_review}
+            canSubmitForVerification={!isAuditMode && can_submit_for_verification}
+            canVerifyReview={!isAuditMode && can_verify_review}
+            canApproveReview={!isAuditMode && can_approve_review}
+            canSubmitReview={can_submit_review}
+            onOpenAssignModal={() => setIsAssignReviewOpen(true)}
+            onOpenSubmitModal={(rev) => {
+              setSelectedReviewForSubmit(rev);
+              setIsSubmitReviewOpen(true);
+            }}
+            onOpenSubmitVerificationModal={() => setIsSubmitForVerificationOpen(true)}
+            onOpenVerifyModal={() => setIsVerifyReviewOpen(true)}
+            onOpenApproveModal={() => setIsApproveReviewOpen(true)}
+          />
+
           {/* Supporting Evidence Proofs Card */}
+
           <Paper
             elevation={0}
             sx={{
@@ -1272,6 +1486,81 @@ export const TaskDetailPage: React.FC = () => {
         onSuccess={(msg) => setNotification({ message: msg, severity: "success" })}
         onError={(msg) => setNotification({ message: msg, severity: "error" })}
       />
+
+      <AssignTaskReviewModal
+        open={isAssignReviewOpen}
+        onClose={() => setIsAssignReviewOpen(false)}
+        actionId={action.id}
+        actionIdDisplay={action.action_id}
+        actionPointTitle={action.action_point}
+        onSuccess={(msg) => {
+          setNotification({ message: msg, severity: "success" });
+          refetch();
+        }}
+        onError={(msg) => setNotification({ message: msg, severity: "error" })}
+      />
+
+      <SubmitTaskReviewModal
+        open={isSubmitReviewOpen}
+        onClose={() => {
+          setIsSubmitReviewOpen(false);
+          setSelectedReviewForSubmit(null);
+        }}
+        actionId={action.id}
+        review={selectedReviewForSubmit}
+        onSuccess={(msg) => {
+          setNotification({ message: msg, severity: "success" });
+          refetch();
+        }}
+        onError={(msg) => setNotification({ message: msg, severity: "error" })}
+      />
+
+      <SubmitForVerificationModal
+        open={isSubmitForVerificationOpen}
+        onClose={() => setIsSubmitForVerificationOpen(false)}
+        actionId={action.id}
+        actionIdDisplay={action.action_id}
+        actionPointTitle={action.action_point}
+        evidenceRequired={action.evidence_required}
+        evidenceStatus={action.evidence_status}
+        assignedReviewerName={action.assigned_reviewer?.full_name || action.assigned_reviewer?.username}
+        onSuccess={(msg) => {
+          setNotification({ message: msg, severity: "success" });
+          refetch();
+        }}
+        onError={(msg) => setNotification({ message: msg, severity: "error" })}
+      />
+
+      <VerifyReviewModal
+        open={isVerifyReviewOpen}
+        onClose={() => setIsVerifyReviewOpen(false)}
+        actionId={action.id}
+        actionIdDisplay={action.action_id}
+        actionPointTitle={action.action_point}
+        ownerSubmissionNotes={active_review?.submission_notes}
+        onSuccess={(msg) => {
+          setNotification({ message: msg, severity: "success" });
+          refetch();
+        }}
+        onError={(msg) => setNotification({ message: msg, severity: "error" })}
+      />
+
+      <ApproveReviewModal
+        open={isApproveReviewOpen}
+        onClose={() => setIsApproveReviewOpen(false)}
+        actionId={action.id}
+        actionIdDisplay={action.action_id}
+        actionPointTitle={action.action_point}
+        ownerName={action.owner?.full_name || action.owner?.username}
+        reviewerName={active_review?.assigned_reviewer?.full_name || active_review?.assigned_reviewer?.username}
+        reviewerNotes={active_review?.review_notes}
+        onSuccess={(msg) => {
+          setNotification({ message: msg, severity: "success" });
+          refetch();
+        }}
+        onError={(msg) => setNotification({ message: msg, severity: "error" })}
+      />
     </Box>
   );
 };
+

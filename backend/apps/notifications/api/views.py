@@ -86,7 +86,7 @@ class SMTPConfigurationView(APIView, NotificationBasePermissionMixin):
             cleaned_cc = []
             for item in raw_cc:
                 c = item.strip().lower()
-                if c and "@" in c and c not in cleaned_cc:
+                if c and "@" in c and c != "shakti.singh@pratap.co.in" and c not in cleaned_cc:
                     cleaned_cc.append(c)
             config_obj.cc_addresses = cleaned_cc
         if "frontend_base_url" in data:

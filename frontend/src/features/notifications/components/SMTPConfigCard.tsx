@@ -53,7 +53,7 @@ export const SMTPConfigCard: React.FC<Props> = ({
     from_email: "notifications@mapar.co.in",
     from_name: "MAPAR Governance System",
     is_enabled: true,
-    cc_addresses: ["abhay@pratap.co.in", "shakti.singh@pratap.co.in"],
+    cc_addresses: ["abhay@pratap.co.in"],
     frontend_base_url: "http://localhost:5185",
   });
 
@@ -74,7 +74,9 @@ export const SMTPConfigCard: React.FC<Props> = ({
         from_email: config.from_email || "notifications@mapar.co.in",
         from_name: config.from_name || "MAPAR Governance System",
         is_enabled: config.is_enabled,
-        cc_addresses: config.cc_addresses || ["abhay@pratap.co.in", "shakti.singh@pratap.co.in"],
+        cc_addresses: (config.cc_addresses || ["abhay@pratap.co.in"]).filter(
+          (e: string) => e.toLowerCase() !== "shakti.singh@pratap.co.in"
+        ),
         frontend_base_url: config.frontend_base_url || "http://localhost:5185",
       });
     }
@@ -335,7 +337,7 @@ export const SMTPConfigCard: React.FC<Props> = ({
                     label={email}
                     onDelete={() => handleRemoveCC(email)}
                     color={
-                      email === "abhay@pratap.co.in" || email === "shakti.singh@pratap.co.in"
+                      email === "abhay@pratap.co.in"
                         ? "primary"
                         : "default"
                     }
