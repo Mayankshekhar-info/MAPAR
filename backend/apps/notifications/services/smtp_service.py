@@ -180,6 +180,49 @@ If you received this message, MAPAR automatic task assignment alerts and recurri
             return False, f"Failed to send test email: {record.error_message}"
 
     @classmethod
+    def validate_recipient_account(
+        cls,
+        recipient_email: str,
+        notification_type: str,
+    ) -> Tuple[bool, Optional[Any], str]:
+        """
+        Validates the recipient against the authoritative User model.
+        For workflows intended for registered application users:
+        - Recipient email must match an active User account (case-insensitive).
+        - User account must be active (is_active=True).
+        - User status must be eligible (ACTIVE or INVITED, not INACTIVE/SUSPENDED/EXPIRED/LOCKED).
+        Returns (is_valid: bool, user_instance: Optional[User], reason: str).
+        """
+        clean_email = (recipient_email or "").strip().lower()
+        if not clean_email or "@" not in clean_email:
+            return False, None, f"Invalid recipient email address format: '{recipient_email}'"
+
+        # Explicit test email workflow triggered by admins is exempt from user account lookup
+        if notification_type == EmailDeliveryRecord.NotificationType.TEST_EMAIL:
+            return True, None, "Admin test email workflow permitted."
+
+        from apps.identity.models import User
+        user = User.objects.filter(email__iexact=clean_email).first()
+
+        if not user:
+            return False, None, f"Recipient '{clean_email}' does not exist as an application user account."
+
+        if not user.is_active:
+            return False, user, f"Recipient user account '{user.username}' is deactivated (is_active=False)."
+
+        ineligible_statuses = {
+            User.Status.INACTIVE,
+            User.Status.SUSPENDED,
+            User.Status.EXPIRED,
+            User.Status.LOCKED,
+        }
+        user_status = getattr(user, "status", User.Status.ACTIVE)
+        if user_status in ineligible_statuses:
+            return False, user, f"Recipient user account '{user.username}' has ineligible status: {user_status}."
+
+        return True, user, "Recipient is a valid, active application user."
+
+    @classmethod
     def send_html_email(
         cls,
         recipient_email: str,
@@ -205,6 +248,41 @@ If you received this message, MAPAR automatic task assignment alerts and recurri
         config = cls.get_effective_config(custom_config)
         clean_recipient = recipient_email.strip().lower()
         effective_action_id = action_id or (action_point.action_id if action_point else "")
+
+        # Validate recipient against authoritative User account source
+        is_valid, matched_user, validation_msg = cls.validate_recipient_account(
+            clean_recipient, notification_type
+        )
+        if not is_valid:
+            logger.warning(
+                "Refusing to dispatch %s email to invalid recipient '%s': %s",
+                notification_type,
+                clean_recipient,
+                validation_msg,
+            )
+            fail_idempotency_key = idempotency_key or f"invalid_recipient:{notification_type}:{clean_recipient}:{timezone.now().strftime('%Y%m%d%H%M%S%f')}"
+            with transaction.atomic():
+                record, _ = EmailDeliveryRecord.objects.get_or_create(
+                    idempotency_key=fail_idempotency_key,
+                    defaults={
+                        "notification_type": notification_type,
+                        "action_point": action_point,
+                        "action_id": effective_action_id,
+                        "recipient_email": clean_recipient,
+                        "recipient_name": recipient_name,
+                        "cc_emails": [],
+                        "subject": subject,
+                        "body_summary": f"[REJECTED: {validation_msg}] {plain_text[:200]}",
+                        "scheduled_slot": scheduled_slot,
+                        "status": EmailDeliveryRecord.Status.FAILED,
+                        "error_message": validation_msg,
+                        "triggered_by": triggered_by,
+                    },
+                )
+            return False, record
+
+        if matched_user and not recipient_name:
+            recipient_name = matched_user.get_full_name() or matched_user.username
 
         # Always enforce mandatory CC addresses unless explicit test email
         if skip_cc:

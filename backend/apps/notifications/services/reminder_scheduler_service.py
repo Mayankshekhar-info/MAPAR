@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo
 
 from django.utils import timezone
+from apps.identity.models import User
 from apps.governance.models import GovernanceActionPoint
 from apps.notifications.models import EmailConfiguration, EmailDeliveryRecord
 from apps.notifications.services.smtp_service import SMTPService
@@ -75,12 +76,16 @@ class ReminderSchedulerService:
         """
         Retrieves all currently active tasks eligible for reminders:
         - Must not be Closed (Status != CLOSED)
-        - Must have a linked registered user account owner with an active email address
+        - Must have a linked registered, active, eligible user account owner with an active email address
         Note: 100% progress or evidence upload alone is NOT considered closed.
         """
         tasks = (
             GovernanceActionPoint.objects.exclude(status=GovernanceActionPoint.Status.CLOSED)
-            .filter(owner__isnull=False)
+            .filter(
+                owner__isnull=False,
+                owner__is_active=True,
+                owner__status__in=[User.Status.ACTIVE, User.Status.INVITED],
+            )
             .exclude(owner__email="")
             .select_related("owner", "circle", "department", "assigned_by", "created_by")
             .prefetch_related("weekly_updates")
@@ -125,7 +130,7 @@ class ReminderSchedulerService:
         )
 
         config = EmailConfiguration.get_solo().get_effective_settings()
-        base_url = config.get("frontend_base_url", "http://localhost:5185").rstrip("/")
+        base_url = (config.get("frontend_base_url") or "https://pagms.pratap.tech").rstrip("/")
 
         sent_count = 0
         skipped_count = 0
@@ -253,12 +258,12 @@ class ReminderSchedulerService:
         else:
             task_list = []
 
-        if not task_list or not owner:
+        if not task_list or not owner or not owner.is_active or owner.status not in (User.Status.ACTIVE, User.Status.INVITED):
             return False, None
 
         owner_name = GovernanceEmailBuilder.get_recipient_display_name(owner)
         config = EmailConfiguration.get_solo().get_effective_settings()
-        effective_base_url = (base_url or config.get("frontend_base_url", "http://localhost:5185")).rstrip("/")
+        effective_base_url = (base_url or config.get("frontend_base_url") or "https://pagms.pratap.tech").rstrip("/")
 
         subject, html_content, plain_text = GovernanceEmailBuilder.build_email(
             recipient_name=owner_name,

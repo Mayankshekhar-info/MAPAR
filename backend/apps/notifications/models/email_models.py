@@ -68,10 +68,12 @@ class EmailConfiguration(models.Model):
         blank=True,
         help_text="Centrally configured mandatory CC addresses for all task alerts and reminders",
     )
+    DEFAULT_FRONTEND_BASE_URL = "https://pagms.pratap.tech"
+
     frontend_base_url = models.CharField(
         max_length=255,
-        default="http://localhost:5185",
-        help_text="Base URL for constructing secure direct links to tasks in MAPAR",
+        default=DEFAULT_FRONTEND_BASE_URL,
+        help_text="Base URL for constructing secure direct links to tasks in PAGMS",
     )
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -110,6 +112,7 @@ class EmailConfiguration(models.Model):
         """
         Resolves effective settings by merging DB config with environment variables.
         Environment variables act as fallbacks if DB fields are empty.
+        Guarantees that public links point to https://pagms.pratap.tech.
         """
         host = self.smtp_host or os.environ.get("SMTP_HOST", "")
         port = self.smtp_port or int(os.environ.get("SMTP_PORT", 587))
@@ -132,14 +135,16 @@ class EmailConfiguration(models.Model):
             from_email = os.environ.get("SMTP_FROM_EMAIL") or self.from_email or "notifications@mapar.co.in"
             from_name = os.environ.get("SMTP_FROM_NAME") or self.from_name or "PGMS Governance System"
         is_enabled = self.is_enabled if self.smtp_host else os.environ.get("SMTP_ENABLED", "True").lower() in ("true", "1", "yes")
-        frontend_url = self.frontend_base_url or os.environ.get("FRONTEND_BASE_URL", "http://localhost:5185")
-        timeout = int(os.environ.get("SMTP_TIMEOUT", 15))
 
-        env_shakti_cc = os.environ.get(
-            "CC_SHAKTI_SINGH_ENABLED",
-            os.environ.get("SMTP_CC_SHAKTI_SINGH_ENABLED", "True"),
-        ).strip().lower()
-        cc_shakti_singh_enabled = env_shakti_cc not in ("false", "0", "no", "disabled", "off")
+        env_frontend = (os.environ.get("FRONTEND_BASE_URL") or os.environ.get("PUBLIC_BASE_URL", "")).strip()
+        if env_frontend:
+            frontend_url = env_frontend
+        elif self.frontend_base_url and self.frontend_base_url.strip() and "localhost" not in self.frontend_base_url:
+            frontend_url = self.frontend_base_url.strip()
+        else:
+            frontend_url = self.DEFAULT_FRONTEND_BASE_URL
+
+        timeout = int(os.environ.get("SMTP_TIMEOUT", 15))
 
         return {
             "host": host.strip(),
@@ -154,7 +159,6 @@ class EmailConfiguration(models.Model):
             "cc_addresses": self.get_effective_cc_list(),
             "has_password": bool(password.strip()),
             "timeout": timeout,
-            "cc_shakti_singh_enabled": cc_shakti_singh_enabled,
         }
 
 

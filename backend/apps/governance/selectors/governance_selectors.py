@@ -1075,6 +1075,7 @@ def get_task_full_detail(action_point_id: int, user: User) -> Optional[Dict[str,
     can_review_revision = GovernanceService.can_review_target_revision(action, user)
     can_request_revision = GovernanceService.can_request_target_revision(action, user)
     can_review_evidence = GovernanceEvidenceService.can_review_evidence(action, user)
+    can_edit_task = GovernanceService.can_edit_task(action, user)
     has_pending_revision = any(r.status == GovernanceTargetRevisionRequest.Status.PENDING for r in revision_requests)
 
     return {
@@ -1087,6 +1088,7 @@ def get_task_full_detail(action_point_id: int, user: User) -> Optional[Dict[str,
         "revision_requests": revision_requests,
         "task_reviews": task_reviews,
         "active_review": active_review,
+        "can_edit_task": can_edit_task,
         "can_assign_review": can_assign_review,
         "can_submit_for_verification": can_submit_for_verification,
         "can_verify_review": can_verify_review,
@@ -1277,8 +1279,6 @@ def get_governance_revision_requests(filters: Dict[str, Any], user: User) -> Dic
     Supports filtering by status (Pending, Approved, Rejected), circle_id, and search query.
     Returns total count, pending count, and paginated/listed items.
     """
-    from apps.governance.selectors.governance_selectors import apply_governance_scope
-
     scoped_actions = apply_governance_scope(GovernanceActionPoint.objects.all(), user)
     qs = GovernanceTargetRevisionRequest.objects.filter(action_point__in=scoped_actions).select_related(
         "action_point",

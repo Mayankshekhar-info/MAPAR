@@ -42,6 +42,16 @@ class TaskAssignmentEmailService:
             return False, None
 
         owner = primary_task.owner
+        from apps.identity.models import User
+        if not owner.is_active or owner.status not in (User.Status.ACTIVE, User.Status.INVITED):
+            logger.warning(
+                "Task %s owner '%s' is not active/eligible (status: %s). Skipping email alert.",
+                primary_task.action_id,
+                owner.username,
+                owner.status,
+            )
+            return False, None
+
         recipient_email = (owner.email or "").strip().lower()
         if not recipient_email or "@" not in recipient_email:
             logger.warning(
@@ -62,9 +72,9 @@ class TaskAssignmentEmailService:
             idempotency_key = f"{prefix}_bulk:{owner.id}:{task_ids_str}"
             action_id_str = ", ".join(t.action_id for t in task_list)[:255]
 
-        # Base URL for secure direct task links
+        # Base URL for secure direct task links (defaults to production PAGMS)
         config = EmailConfiguration.get_solo().get_effective_settings()
-        base_url = config.get("frontend_base_url", "http://localhost:5185").rstrip("/")
+        base_url = (config.get("frontend_base_url") or "https://pagms.pratap.tech").rstrip("/")
 
         # Build approved PGMS Governance & Action Tracker email content
         email_type = "reassignment" if is_reassignment else "assignment"

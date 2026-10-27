@@ -78,6 +78,10 @@ class StatusMatrixEmailService:
                 # Skip tasks without valid owner email
                 continue
 
+            if not owner.is_active or owner.status not in (User.Status.ACTIVE, User.Status.INVITED):
+                # Skip deactivated, deleted, or ineligible accounts
+                continue
+
             normalized_email = owner.email.strip().lower()
             owner_name = GovernanceEmailBuilder.get_recipient_display_name(owner)
 
@@ -118,22 +122,30 @@ class StatusMatrixEmailService:
         grouped = cls.group_tasks_by_recipient(tasks)
 
         recipients_list = []
+        total_tasks_included = 0
+        total_overdue = 0
+        total_high_priority = 0
+
         for normalized_email, g in grouped.items():
+            task_cnt = len(g["tasks"])
+            overdue_cnt = int(g.get("overdue_count", 0))
+            high_pri_cnt = int(g.get("high_priority_count", 0))
+
+            total_tasks_included += task_cnt
+            total_overdue += overdue_cnt
+            total_high_priority += high_pri_cnt
+
             recipients_list.append({
                 "recipient_name": g["recipient_name"],
                 "recipient_email": normalized_email,
-                "task_count": len(g["tasks"]),
+                "task_count": task_cnt,
                 "action_ids": [t.action_id for t in g["tasks"]],
-                "overdue_count": g["overdue_count"],
-                "high_priority_count": g["high_priority_count"],
+                "overdue_count": overdue_cnt,
+                "high_priority_count": high_pri_cnt,
             })
 
         # Sort recipients by overdue count descending, then task count descending
         recipients_list.sort(key=lambda r: (r["overdue_count"], r["task_count"]), reverse=True)
-
-        total_tasks_included = sum(r["task_count"] for r in recipients_list)
-        total_overdue = sum(r["overdue_count"] for r in recipients_list)
-        total_high_priority = sum(r["high_priority_count"] for r in recipients_list)
 
         return {
             "distinct_recipients_count": len(recipients_list),
@@ -172,7 +184,7 @@ class StatusMatrixEmailService:
             }
 
         config = EmailConfiguration.get_solo().get_effective_settings()
-        base_url = config.get("frontend_base_url", "http://localhost:5185").rstrip("/")
+        base_url = (config.get("frontend_base_url") or "https://pagms.pratap.tech").rstrip("/")
 
         now = timezone.now()
         batch_key = now.strftime("%Y%m%d%H%M")
@@ -211,12 +223,28 @@ class StatusMatrixEmailService:
                 })
                 continue
 
-            # Target delivery address (supports test override if specified)
-            target_delivery_email = (
-                override_recipient_email.strip().lower()
-                if override_recipient_email and override_recipient_email.strip()
-                else normalized_email
-            )
+            # Target delivery address (supports test override if specified, validated against active user accounts)
+            if override_recipient_email and override_recipient_email.strip():
+                override_clean = override_recipient_email.strip().lower()
+                override_user = User.objects.filter(
+                    email__iexact=override_clean,
+                    is_active=True,
+                    status__in=[User.Status.ACTIVE, User.Status.INVITED],
+                ).first()
+                if not override_user:
+                    failed_count += 1
+                    results_log.append({
+                        "recipient_email": override_clean,
+                        "recipient_name": group["recipient_name"],
+                        "task_count": len(owner_tasks),
+                        "action_ids": [t.action_id for t in owner_tasks],
+                        "status": "FAILED",
+                        "error": f"Override recipient {override_clean} is not a valid active application user account.",
+                    })
+                    continue
+                target_delivery_email = override_clean
+            else:
+                target_delivery_email = normalized_email
 
             # Build approved PAGMS consolidated email
             subject, html_content, plain_text = GovernanceEmailBuilder.build_email(
@@ -354,7 +382,11 @@ class StatusMatrixEmailService:
         recipient_name = owner_name or "Action Owner"
 
         if owner_id and owner_id != 0:
-            target_user = User.objects.filter(id=owner_id).first()
+            target_user = User.objects.filter(
+                id=owner_id,
+                is_active=True,
+                status__in=[User.Status.ACTIVE, User.Status.INVITED],
+            ).first()
             if target_user:
                 recipient_email = (target_user.email or "").strip().lower()
                 recipient_name = GovernanceEmailBuilder.get_recipient_display_name(target_user)
@@ -362,15 +394,18 @@ class StatusMatrixEmailService:
         if not recipient_email and owner_tasks:
             for t in owner_tasks:
                 if t.owner and t.owner.email and t.owner.email.strip():
-                    recipient_email = t.owner.email.strip().lower()
-                    if not target_user:
-                        target_user = t.owner
-                        recipient_name = GovernanceEmailBuilder.get_recipient_display_name(target_user)
-                    break
+                    if t.owner.is_active and t.owner.status in (User.Status.ACTIVE, User.Status.INVITED):
+                        recipient_email = t.owner.email.strip().lower()
+                        if not target_user:
+                            target_user = t.owner
+                            recipient_name = GovernanceEmailBuilder.get_recipient_display_name(target_user)
+                        break
 
         if not recipient_email and owner_name and owner_name.strip():
             u = User.objects.filter(
                 Q(first_name__iexact=owner_name.strip()) | Q(username__iexact=owner_name.strip()),
+                is_active=True,
+                status__in=[User.Status.ACTIVE, User.Status.INVITED],
                 email__isnull=False,
             ).exclude(email="").first()
             if u:
@@ -410,7 +445,7 @@ class StatusMatrixEmailService:
         elif len(owner_tasks) == 0 and closed_assigned_count > 0:
             no_eligible_reason = f"All {closed_assigned_count} assigned tasks are Closed. Closed tasks are excluded from notification emails."
         elif not recipient_email:
-            no_eligible_reason = "No valid email address registered for this action owner in the database."
+            no_eligible_reason = "No valid registered/active user email address found for this action owner in the database."
 
         return {
             "eligible_tasks_count": len(owner_tasks),
@@ -448,11 +483,29 @@ class StatusMatrixEmailService:
             }
 
         owner_tasks = cls.get_scoped_owner_tasks(triggered_by, owner_id=owner_id, owner_name=owner_name)
-        recipient_email = override_recipient_email.strip().lower() if override_recipient_email else preview["recipient_email"]
-        recipient_name = preview["recipient_name"]
+
+        if override_recipient_email and override_recipient_email.strip():
+            override_clean = override_recipient_email.strip().lower()
+            override_user = User.objects.filter(
+                email__iexact=override_clean,
+                is_active=True,
+                status__in=[User.Status.ACTIVE, User.Status.INVITED],
+            ).first()
+            if not override_user:
+                return {
+                    "success": False,
+                    "sent": False,
+                    "message": f"Override recipient '{override_clean}' is not an active or eligible application user account.",
+                    "preview": preview,
+                }
+            recipient_email = override_clean
+            recipient_name = GovernanceEmailBuilder.get_recipient_display_name(override_user)
+        else:
+            recipient_email = preview["recipient_email"]
+            recipient_name = preview["recipient_name"]
 
         config = EmailConfiguration.get_solo().get_effective_settings()
-        base_url = config.get("frontend_base_url", "http://localhost:5185").rstrip("/")
+        base_url = (config.get("frontend_base_url") or "https://pagms.pratap.tech").rstrip("/")
 
         now = timezone.now()
         batch_key = now.strftime("%Y%m%d%H%M")

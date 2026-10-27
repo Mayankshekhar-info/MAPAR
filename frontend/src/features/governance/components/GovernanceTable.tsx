@@ -29,6 +29,7 @@ import EventRepeatIcon from "@mui/icons-material/EventRepeat";
 import DynamicFeedIcon from "@mui/icons-material/DynamicFeed";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import PriorityHighIcon from "@mui/icons-material/PriorityHigh";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import dayjs from "dayjs";
 
 import { colorTokens } from "../../../app/theme/tokens";
@@ -792,15 +793,28 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
                       {row.current_target_date}
                     </TableCell>
                     <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                      <Tooltip title="View Full Task Page" arrow>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleRowClick(row)}
-                          sx={{ color: colorTokens.primary.main }}
-                        >
-                          <VisibilityOutlinedIcon sx={{ fontSize: 18 }} />
-                        </IconButton>
-                      </Tooltip>
+                      <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 0.5 }}>
+                        {onEditAction && !location.pathname.startsWith("/audit") && !location.pathname.startsWith("/documents") && (
+                          <Tooltip title="Edit Task" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={() => onEditAction(row)}
+                              sx={{ color: colorTokens.primary.main }}
+                            >
+                              <EditOutlinedIcon sx={{ fontSize: 18 }} />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                        <Tooltip title="View Full Task Page" arrow>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleRowClick(row)}
+                            sx={{ color: colorTokens.primary.main }}
+                          >
+                            <VisibilityOutlinedIcon sx={{ fontSize: 18 }} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
                     </TableCell>
                   </TableRow>
                 );
@@ -1055,6 +1069,17 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
                             <UpdateOutlinedIcon sx={{ fontSize: 18 }} />
                           </IconButton>
                         </Tooltip>
+                        {onEditAction && !location.pathname.startsWith("/audit") && !location.pathname.startsWith("/documents") && (
+                          <Tooltip title="Edit Task" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={() => onEditAction(row)}
+                              sx={{ color: colorTokens.primary.main }}
+                            >
+                              <EditOutlinedIcon sx={{ fontSize: 18 }} />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         <Tooltip title="View Full Task Page" arrow>
                           <IconButton
                             size="small"

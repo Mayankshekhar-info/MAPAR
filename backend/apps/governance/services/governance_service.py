@@ -161,16 +161,56 @@ class GovernanceService:
 
 
     @classmethod
+    def can_edit_task(cls, action_point: GovernanceActionPoint, user: User) -> bool:
+        """
+        Determines whether the user is authorized to edit the action point within
+        the Governance & Action Tracker module.
+        Authorized users include:
+        - Superusers and Super Admins
+        - Management and Corporate Domain Leads
+        - Circle Domain Managers and Circle Data Entry users within the action point's Circle
+        - Task Creator and Assigner
+        - Assigned Task Owner
+        Viewers and out-of-scope users are strictly rejected.
+        """
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_superuser or getattr(user, "is_superadmin", False):
+            return True
+        if user.role in [User.Role.SUPER_ADMIN, User.Role.MANAGEMENT, User.Role.CORPORATE_DOMAIN_LEAD]:
+            return True
+        if action_point.created_by_id == user.id or action_point.assigned_by_id == user.id:
+            return True
+        user_circle_id = getattr(user, "circle_id", None) or (user.circle.id if getattr(user, "circle", None) else None)
+        if user.role in [User.Role.CIRCLE_DOMAIN_MANAGER, User.Role.CIRCLE_DATA_ENTRY] and user_circle_id == action_point.circle_id:
+            return True
+        if action_point.owner_id == user.id:
+            return True
+        return False
+
+    @classmethod
     def update_action_point(cls, action_point: GovernanceActionPoint, data: Dict[str, Any], user: User) -> GovernanceActionPoint:
         """
-        Updates an action point with scoped permission checks.
-        - Assigned owner can update: status, last_update, actual_closure_date.
-        - Admin / assigner / managers can update all fields (circle, owner, priority, dates).
+        Updates an existing action point within Governance & Action Tracker.
+        - Verifies user authorization via can_edit_task.
+        - Restricts field editing: administrative fields require admin/manager/creator/assigner permissions,
+          while assigned owners can update progress/status fields.
+        - Blocks direct manipulation of target_closure_date or current_target_date.
         """
+        if not cls.can_edit_task(action_point, user):
+            raise PermissionDenied("You do not have permission to update this action point.")
+
+        user_circle_id = getattr(user, "circle_id", None) or (user.circle.id if getattr(user, "circle", None) else None)
+        is_circle_manager_or_entry = (
+            user.role in [User.Role.CIRCLE_DOMAIN_MANAGER, User.Role.CIRCLE_DATA_ENTRY]
+            and user_circle_id == action_point.circle_id
+        )
+
         is_admin_or_manager = (
             user.is_superuser
             or getattr(user, "is_superadmin", False)
-            or user.role in [User.Role.SUPER_ADMIN, User.Role.MANAGEMENT, User.Role.CORPORATE_DOMAIN_LEAD, User.Role.CIRCLE_DOMAIN_MANAGER]
+            or user.role in [User.Role.SUPER_ADMIN, User.Role.MANAGEMENT, User.Role.CORPORATE_DOMAIN_LEAD]
+            or is_circle_manager_or_entry
             or action_point.created_by_id == user.id
             or action_point.assigned_by_id == user.id
         )

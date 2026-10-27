@@ -190,7 +190,7 @@ export const GovernanceActionModal: React.FC<GovernanceActionModalProps> = ({
       setErrorMsg("Action Point / Task Title is required.");
       return;
     }
-    if (!targetClosureDate) {
+    if (!isEdit && !targetClosureDate) {
       setErrorMsg("Target Closure Date is required.");
       return;
     }

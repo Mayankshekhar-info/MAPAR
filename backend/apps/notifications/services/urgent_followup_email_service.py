@@ -64,6 +64,13 @@ class UrgentFollowUpEmailService:
 
         recipient_email = (target_user.email or "").strip().lower()
         target_display = GovernanceEmailBuilder.get_recipient_display_name(target_user)
+        if not target_user.is_active or target_user.status not in (User.Status.ACTIVE, User.Status.INVITED):
+            return (
+                False,
+                f"Recipient '{target_display}' is not an active or eligible application user account.",
+                None,
+            )
+
         if not recipient_email or "@" not in recipient_email:
             return (
                 False,
@@ -97,7 +104,7 @@ class UrgentFollowUpEmailService:
 
         # 4. Resolve base url and initiator display name
         config = EmailConfiguration.get_solo().get_effective_settings()
-        base_url = config.get("frontend_base_url", "http://localhost:5185").rstrip("/")
+        base_url = (config.get("frontend_base_url") or "https://pagms.pratap.tech").rstrip("/")
         initiator_name = (
             (triggered_by.get_full_name() or triggered_by.username)
             if triggered_by

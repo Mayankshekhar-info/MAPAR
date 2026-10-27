@@ -449,6 +449,10 @@ class GovernanceTaskReviewService:
         if not reviewer:
             return False, None
 
+        if not reviewer.is_active or reviewer.status not in (User.Status.ACTIVE, User.Status.INVITED):
+            logger.info("Reviewer '%s' is not active/eligible (status: %s). Skipping email alert.", reviewer.username, reviewer.status)
+            return False, None
+
         recipient_email = (reviewer.email or "").strip().lower()
         if not recipient_email or "@" not in recipient_email:
             logger.info("Reviewer '%s' does not have a verified email address. Skipping email alert.", reviewer.username)
@@ -456,9 +460,9 @@ class GovernanceTaskReviewService:
 
         action_point = review.action_point
         config = EmailConfiguration.get_solo().get_effective_settings()
-        effective_base_url = (base_url or config.get("frontend_base_url", "http://localhost:5185")).rstrip("/")
+        effective_base_url = (base_url or config.get("frontend_base_url") or "https://pagms.pratap.tech").rstrip("/")
 
-        reviewer_name = GovernanceEmailBuilder.get_recipient_display_name(reviewer)
+        reviewer_name = GovernanceEmailBuilder.get_recipient_display_name(reviewer, fallback="Reviewer")
         requester_name = GovernanceEmailBuilder.get_recipient_display_name(review.requested_by, fallback="Team Lead")
 
         instruction_lead = (
@@ -473,7 +477,7 @@ class GovernanceTaskReviewService:
             tasks=[action_point],
             email_type="review_assignment",
             subtitle="Task Assigned for Your Formal Review",
-            lead_message=f"{requester_name} has assigned governance action item <strong>{action_point.action_id}</strong> for your review.{instruction_lead}",
+            lead_message=f"<strong>{requester_name}</strong> has assigned governance action item <strong>{action_point.action_id}</strong> for your formal review.{instruction_lead}",
             base_url=effective_base_url,
             initiator_name=requester_name,
         )

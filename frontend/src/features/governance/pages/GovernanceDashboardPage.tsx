@@ -883,10 +883,14 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
           onOpenBulkModal={() => openBulkUpdate(effectiveMode === "audit" ? "weekly" : "actions")}
           onFilterChange={handleFilterChange}
           onSelectAction={(action) => navigate(`/${effectiveMode}/tasks/${action.id}`)}
-          onEditAction={(action) => {
-            setEditingAction(action);
-            setIsActionModalOpen(true);
-          }}
+          onEditAction={
+            effectiveMode === "governance"
+              ? (action) => {
+                  setEditingAction(action);
+                  setIsActionModalOpen(true);
+                }
+              : undefined
+          }
           onReviseTarget={(action) => {
             if (effectiveMode === "audit") {
               setActionForRevisionRequest(action);

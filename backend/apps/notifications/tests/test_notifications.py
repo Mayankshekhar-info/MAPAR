@@ -131,7 +131,7 @@ class TestTaskAssignmentEmails:
         assert "ACT-00999" in kwargs["plain_text"]
         assert "Deploy Automated Email Notification Pipeline" in kwargs["plain_text"]
         assert "Central Operations Circle" in kwargs["plain_text"]
-        assert "http://localhost:5185/governance/tasks/" in kwargs["plain_text"]
+        assert "https://pagms.pratap.tech/governance/tasks/" in kwargs["plain_text"]
         # Check approved PAGMS branding & greeting
         assert "PAGMS" in kwargs["html_content"] or "PGMS" in kwargs["html_content"]
         assert "Governance &amp; Action Tracker" in kwargs["html_content"]
@@ -354,6 +354,26 @@ class TestNotificationAPIs:
 class TestShaktiSinghCCExclusion:
     """Verifies that shakti.singh@pratap.co.in is permanently excluded from CC across all email dispatch paths."""
 
+    @pytest.fixture(autouse=True)
+    def setup_users(self, circle):
+        # Create active users to satisfy the authoritative account validation boundary
+        User.objects.get_or_create(
+            email="recipient_default@example.com",
+            defaults={"username": "recipient_default", "circle": circle, "is_active": True, "status": User.Status.ACTIVE},
+        )
+        User.objects.get_or_create(
+            email="recipient_explicit@example.com",
+            defaults={"username": "recipient_explicit", "circle": circle, "is_active": True, "status": User.Status.ACTIVE},
+        )
+        User.objects.get_or_create(
+            email="shakti.singh@pratap.co.in",
+            defaults={"username": "shakti_singh", "circle": circle, "is_active": True, "status": User.Status.ACTIVE},
+        )
+        User.objects.get_or_create(
+            email="recipient_case@example.com",
+            defaults={"username": "recipient_case", "circle": circle, "is_active": True, "status": User.Status.ACTIVE},
+        )
+
     def test_default_behavior_excludes_shakti_from_cc(self):
         with patch("smtplib.SMTP") as mock_smtp_class:
             mock_server = MagicMock()
@@ -454,4 +474,168 @@ class TestShaktiSinghCCExclusion:
             assert "shakti.singh@pratap.co.in" not in record.cc_emails
             assert "other.user@pratap.co.in" in record.cc_emails
             assert "abhay@pratap.co.in" in record.cc_emails
+
+
+@pytest.mark.django_db
+class TestUserAccountRecipientValidation:
+    """
+    PRIORITY 1: Ensure emails are strictly sent only to registered, active application users.
+    Nonexistent accounts, deactivated accounts, and ineligible accounts are rejected.
+    """
+
+    def test_nonexistent_user_email_rejected_at_smtp_boundary(self):
+        with patch("smtplib.SMTP") as mock_smtp_class:
+            success, record = SMTPService.send_html_email(
+                recipient_email="ghost_nonexistent_user@pratap.co.in",
+                subject="Test Assignment",
+                plain_text="Details",
+                html_content="<p>Details</p>",
+                idempotency_key="test_ghost_user_1",
+            )
+
+            assert success is False
+            assert record is not None
+            assert record.status == EmailDeliveryRecord.Status.FAILED
+            assert "does not exist as an application user account" in record.error_message
+            # Critical: SMTP server must NOT be contacted
+            assert mock_smtp_class.call_count == 0
+
+    def test_deactivated_user_account_rejected(self, circle):
+        deactivated = User.objects.create_user(
+            username="deactivated_user",
+            email="deactivated@pratap.co.in",
+            password="pass",
+            circle=circle,
+            is_active=False,
+            status=User.Status.ACTIVE,
+        )
+
+        with patch("smtplib.SMTP") as mock_smtp_class:
+            success, record = SMTPService.send_html_email(
+                recipient_email=deactivated.email,
+                subject="Test Assignment",
+                plain_text="Details",
+                html_content="<p>Details</p>",
+                idempotency_key="test_deactivated_user_1",
+            )
+
+            assert success is False
+            assert record is not None
+            assert record.status == EmailDeliveryRecord.Status.FAILED
+            assert "is deactivated" in record.error_message
+            assert mock_smtp_class.call_count == 0
+
+    def test_ineligible_status_user_account_rejected(self, circle):
+        suspended = User.objects.create_user(
+            username="suspended_user",
+            email="suspended@pratap.co.in",
+            password="pass",
+            circle=circle,
+            is_active=True,
+            status=User.Status.SUSPENDED,
+        )
+
+        with patch("smtplib.SMTP") as mock_smtp_class:
+            success, record = SMTPService.send_html_email(
+                recipient_email=suspended.email,
+                subject="Test Assignment",
+                plain_text="Details",
+                html_content="<p>Details</p>",
+                idempotency_key="test_suspended_user_1",
+            )
+
+            assert success is False
+            assert record is not None
+            assert record.status == EmailDeliveryRecord.Status.FAILED
+            assert "ineligible status" in record.error_message
+            assert mock_smtp_class.call_count == 0
+
+    def test_active_eligible_user_account_accepted(self, action_owner):
+        with patch("smtplib.SMTP") as mock_smtp_class:
+            mock_server = MagicMock()
+            mock_smtp_class.return_value = mock_server
+            mock_smtp_class.return_value.__enter__.return_value = mock_server
+
+            success, record = SMTPService.send_html_email(
+                recipient_email=action_owner.email,
+                subject="Test Assignment",
+                plain_text="Details",
+                html_content="<p>Details</p>",
+                custom_config={"host": "smtp.test.com"},
+                idempotency_key="test_active_user_ok_1",
+            )
+
+            assert success is True
+            assert record is not None
+            assert record.status == EmailDeliveryRecord.Status.SENT
+            assert mock_server.sendmail.called
+
+    def test_task_assignment_skips_inactive_owner(self, circle, superuser, action_point):
+        inactive_user = User.objects.create_user(
+            username="former_employee",
+            email="former@pratap.co.in",
+            password="pass",
+            circle=circle,
+            is_active=False,
+        )
+        action_point.owner = inactive_user
+        action_point.save()
+
+        with patch("apps.notifications.services.smtp_service.SMTPService.send_html_email") as mock_send:
+            success, record = TaskAssignmentEmailService.send_assignment_email(action_point)
+            assert success is False
+            assert record is None
+            assert mock_send.call_count == 0
+
+    def test_reminder_scheduler_skips_inactive_owner_tasks(self, circle, superuser, action_point):
+        inactive_user = User.objects.create_user(
+            username="inactive_task_owner",
+            email="inactive_owner@pratap.co.in",
+            password="pass",
+            circle=circle,
+            is_active=False,
+        )
+        action_point.owner = inactive_user
+        action_point.save()
+
+        eligible = ReminderSchedulerService.get_eligible_unclosed_tasks()
+        assert action_point.id not in [t.id for t in eligible]
+
+
+@pytest.mark.django_db
+class TestProductionUrlGeneration:
+    """
+    PRIORITY 3: Verify all email links point to https://pagms.pratap.tech and login is exactly https://pagms.pratap.tech/login
+    """
+
+    def test_builder_defaults_to_pagms_url(self, action_point):
+        from apps.notifications.services.governance_email_builder import GovernanceEmailBuilder
+        subject, html, plain = GovernanceEmailBuilder.build_email(
+            recipient_name="John Doe",
+            tasks=action_point,
+            email_type="assignment",
+        )
+
+        assert "https://pagms.pratap.tech/login" in html
+        assert "https://pagms.pratap.tech/login" in plain
+        assert f"https://pagms.pratap.tech/governance/tasks/{action_point.id}" in html
+        assert f"https://pagms.pratap.tech/governance/tasks/{action_point.id}" in plain
+        assert "http://localhost" not in html
+        assert "http://localhost" not in plain
+
+    def test_builder_sanitizes_localhost_to_production_url(self, action_point):
+        from apps.notifications.services.governance_email_builder import GovernanceEmailBuilder
+        subject, html, plain = GovernanceEmailBuilder.build_email(
+            recipient_name="John Doe",
+            tasks=action_point,
+            email_type="reminder",
+            base_url="http://localhost:5185",
+        )
+
+        assert "https://pagms.pratap.tech/login" in html
+        assert "https://pagms.pratap.tech/login" in plain
+        assert f"https://pagms.pratap.tech/governance/tasks/{action_point.id}" in html
+        assert "localhost" not in html
+        assert "localhost" not in plain
+
 

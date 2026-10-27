@@ -22,17 +22,22 @@ class GovernanceEmailBuilder:
 
     @classmethod
     def get_recipient_display_name(cls, user: Optional[User], fallback: str = "Team Member") -> str:
-        """Extracts dynamic full name of the assigned user, falling back to username or fallback."""
+        """Extracts dynamic full name of the assigned user, falling back to clean username or fallback."""
         if not user:
             return fallback
         if hasattr(user, "get_full_name"):
             full_name = user.get_full_name().strip()
-            if full_name:
+            if full_name and full_name.lower() not in ("authorized reviewer", "reviewer"):
                 return full_name
         first_last = f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip()
-        if first_last:
+        if first_last and first_last.lower() not in ("authorized reviewer", "reviewer"):
             return first_last
-        return getattr(user, "username", "") or fallback
+        raw_username = getattr(user, "username", "") or ""
+        if raw_username and raw_username.lower() not in ("authorized reviewer", "reviewer_user", "reviewer"):
+            cleaned = raw_username.replace(".", " ").replace("_", " ").strip().title()
+            if cleaned:
+                return cleaned
+        return fallback
 
     @classmethod
     def format_task_context(cls, task: GovernanceActionPoint) -> str:
@@ -76,10 +81,10 @@ class GovernanceEmailBuilder:
         cls,
         recipient_name: str,
         tasks: Union[GovernanceActionPoint, List[GovernanceActionPoint]],
-        email_type: str = "reminder",  # "assignment", "reassignment", "urgent_followup", "reminder"
+        email_type: str = "reminder",  # "assignment", "reassignment", "urgent_followup", "review_assignment", "reminder"
         subtitle: Optional[str] = None,
         lead_message: Optional[str] = None,
-        base_url: str = "http://localhost:5185",
+        base_url: str = "https://pagms.pratap.tech",
         initiator_name: Optional[str] = None,
     ) -> Tuple[str, str, str]:
         """
@@ -92,7 +97,11 @@ class GovernanceEmailBuilder:
             task_list = list(tasks)
 
         today = timezone.localdate()
-        base_url = base_url.rstrip("/")
+        clean_base = (base_url or "https://pagms.pratap.tech").strip().rstrip("/")
+        if not clean_base or "localhost" in clean_base:
+            clean_base = "https://pagms.pratap.tech"
+        base_url = clean_base
+        login_url = f"{base_url}/login"
 
         # Compute summary metrics from actual tasks
         total_tasks, overdue_count, high_priority_count = cls.compute_summary_stats(task_list, today)
@@ -105,8 +114,21 @@ class GovernanceEmailBuilder:
             else "Task Update"
         )
 
-        default_sub = "Assigned action items requiring your review"
-        default_lead = "You have the following actions assigned to you. Please review each task and update their progress in PAGMS."
+        if email_type == "review_assignment":
+            default_sub = "Task Assigned for Your Formal Review"
+            default_lead = f"{initiator_name or 'Leadership'} has assigned governance action item {first_task.action_id if first_task else ''} for your formal review."
+        elif email_type == "urgent_followup":
+            default_sub = "Urgent Leadership Follow-Up"
+            default_lead = "Leadership has requested an immediate progress update on the following assigned action items."
+        elif email_type == "assignment":
+            default_sub = "New Governance Action Point Assigned"
+            default_lead = "You have new action points assigned to you in PAGMS. Please review each item below."
+        elif email_type == "reassignment":
+            default_sub = "Governance Action Point Reassigned"
+            default_lead = "An action point has been reassigned to your ownership in PAGMS."
+        else:
+            default_sub = "Assigned action items requiring your review"
+            default_lead = "You have the following actions assigned to you. Please review each task and update their progress in PAGMS."
 
         if email_type == "assignment":
             if total_tasks > 1:
@@ -120,11 +142,26 @@ class GovernanceEmailBuilder:
                 subject = f"[PAGMS Urgent] Leadership Follow-Up on {total_tasks} Action Items"
             else:
                 subject = f"[PAGMS Urgent] Action Required: [{first_task.action_id}] — {first_title_short}"
+        elif email_type == "review_assignment":
+            subject = f"[PAGMS Review] Formal Review Required — {first_task.action_id} — {first_title_short}"
         else:  # reminder
             if overdue_count > 0:
                 subject = f"[PAGMS Reminder] OVERDUE Action Required — {first_task.action_id if total_tasks == 1 else f'{overdue_count} Overdue Task(s)'}"
             else:
                 subject = f"[PAGMS Reminder] Action Required — {first_task.action_id if total_tasks == 1 else f'{total_tasks} Active Task(s)'}"
+
+        if email_type == "review_assignment":
+            header_pill_text = "Review Request"
+            header_pill_bg = "#4338CA"
+        elif email_type == "urgent_followup":
+            header_pill_text = "Urgent Alert"
+            header_pill_bg = "#DC2626"
+        elif email_type in ("assignment", "reassignment"):
+            header_pill_text = "Task Assignment"
+            header_pill_bg = "#2563EB"
+        else:
+            header_pill_text = "Action Alert"
+            header_pill_bg = "#2563EB"
 
         subheading_text = subtitle or default_sub
         lead_text = lead_message or default_lead
@@ -225,6 +262,16 @@ class GovernanceEmailBuilder:
                 else (task.last_update.strip() if task.last_update and task.last_update.strip() else "Review assigned action point deliverables and submit regular progress updates.")
             )
 
+            # Assigned By row if initiator_name is provided
+            assigned_by_html = ""
+            if initiator_name:
+                assigned_by_label = "Review Assigned By" if email_type == "review_assignment" else "Assigned By"
+                assigned_by_html = f"""
+                      <tr>
+                        <td style="padding: 5px 0; color: #64748B; font-size: 13px; width: 40%;">{assigned_by_label}</td>
+                        <td style="padding: 5px 0; color: #0F172A; font-weight: 700; font-size: 13px;">{html.escape(initiator_name)}</td>
+                      </tr>"""
+
             card_html = f"""
             <div style="background-color: #FFFFFF; border: 1px solid #BFDBFE; border-radius: 12px; padding: 22px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);">
               <!-- Card Header: Action ID + Top Status Badge -->
@@ -258,7 +305,7 @@ class GovernanceEmailBuilder:
                       <tr>
                         <td style="padding: 5px 0; color: #64748B; font-size: 13px; width: 40%;">Assigned To</td>
                         <td style="padding: 5px 0; color: #0F172A; font-weight: 700; font-size: 13px;">{html.escape(task_owner_simple)}</td>
-                      </tr>
+                      </tr>{assigned_by_html}
                       <tr>
                         <td style="padding: 5px 0; color: #64748B; font-size: 13px;">Circle</td>
                         <td style="padding: 5px 0; color: #0F172A; font-weight: 600; font-size: 13px;">{html.escape(circle_name)}</td>
@@ -365,7 +412,7 @@ class GovernanceEmailBuilder:
                     </table>
                   </td>
                   <td align="right" style="vertical-align: middle;">
-                    <span style="display: inline-block; background-color: #2563EB; color: #FFFFFF; font-size: 12px; font-weight: 600; padding: 6px 16px; border-radius: 20px; letter-spacing: 0.2px;">Action Alert</span>
+                    <span style="display: inline-block; background-color: {header_pill_bg}; color: #FFFFFF; font-size: 12px; font-weight: 600; padding: 6px 16px; border-radius: 20px; letter-spacing: 0.2px;">{header_pill_text}</span>
                   </td>
                 </tr>
               </table>
@@ -465,7 +512,7 @@ class GovernanceEmailBuilder:
                     <div style="width: 22px; height: 22px; border-radius: 50%; background-color: #3B82F6; color: #FFFFFF; text-align: center; line-height: 22px; font-size: 12px; font-weight: 700; font-family: serif;">i</div>
                   </td>
                   <td style="vertical-align: middle; padding-left: 8px; font-size: 12px; color: #1E40AF; line-height: 1.4;">
-                    This is an automated notification from PAGMS. Please log in to review and update your assigned action items.
+                    This is an automated notification from PAGMS. Please <a href="{login_url}" style="color: #1D4ED8; font-weight: 700; text-decoration: underline;">log in</a> to review and update your assigned action items.
                   </td>
                 </tr>
               </table>
@@ -557,8 +604,11 @@ class GovernanceEmailBuilder:
                 f"Target Closure Date:  {target_date_str}{rev_str}",
                 f"Timeline Status:      {timeline_str}",
                 f"Assigned User:        {task_owner_display}",
-                f"Organization/Context: {org_str}",
             ])
+            if initiator_name:
+                assigned_by_lbl = "Review Assigned By" if email_type == "review_assignment" else "Assigned By"
+                plain_text_parts.append(f"{assigned_by_lbl + ':':<22} {initiator_name}")
+            plain_text_parts.append(f"Organization/Context: {org_str}")
             if getattr(task, "evidence_status", None):
                 plain_text_parts.append(f"Evidence Status:      {task.evidence_status}")
             if task.ageing_days is not None and not is_closed:
@@ -577,6 +627,7 @@ class GovernanceEmailBuilder:
 
         plain_text_parts.extend([
             "",
+            f"Portal Login:         {login_url}",
             "==================================================",
             "PAGMS · Governance & Action Tracking",
         ])

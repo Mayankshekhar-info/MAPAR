@@ -27,12 +27,14 @@ import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
 import RateReviewIcon from "@mui/icons-material/RateReview";
 import SendIcon from "@mui/icons-material/Send";
 import VerifiedIcon from "@mui/icons-material/Verified";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import dayjs from "dayjs";
 
 
 import { colorTokens, radiusTokens } from "../../../app/theme/tokens";
 import {
   useTaskFullDetail,
+  useGovernanceMetadata,
   useSubmitWeeklyUpdate,
   useUploadEvidence,
   useReviewEvidence,
@@ -59,6 +61,7 @@ import { SubmitForVerificationModal } from "../components/SubmitForVerificationM
 import { VerifyReviewModal } from "../components/VerifyReviewModal";
 import { ApproveReviewModal } from "../components/ApproveReviewModal";
 import { TaskReviewsCard } from "../components/TaskReviewsCard";
+import { GovernanceActionModal } from "../components/GovernanceActionModal";
 import {
   GovernanceEvidenceItem,
   SubmitWeeklyUpdatePayload,
@@ -66,6 +69,8 @@ import {
   ReviewEvidencePayload,
   GovernanceTargetRevisionRequest,
   GovernanceTaskReview,
+  CreateActionPayload,
+  UpdateActionPayload,
 } from "../types/governance.types";
 
 
@@ -79,6 +84,7 @@ export const TaskDetailPage: React.FC = () => {
 
   const { user: currentUser } = useAuth();
   const { data, isLoading, error, refetch } = useTaskFullDetail(taskId);
+  const { data: metadata } = useGovernanceMetadata();
 
   // Mutations
   const submitWeeklyMutation = useSubmitWeeklyUpdate();
@@ -90,6 +96,7 @@ export const TaskDetailPage: React.FC = () => {
   const reviewRevisionRequestMutation = useReviewTargetRevisionRequest();
 
   // Modals
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isWeeklyModalOpen, setIsWeeklyModalOpen] = useState(false);
   const [isEvidenceUploadOpen, setIsEvidenceUploadOpen] = useState(false);
   const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false);
@@ -161,7 +168,26 @@ export const TaskDetailPage: React.FC = () => {
     can_request_revision = false,
     can_review_evidence = false,
     has_pending_revision = false,
+    can_edit_task = false,
   } = data;
+
+  const handleEditTaskSubmit = async (payload: CreateActionPayload | UpdateActionPayload) => {
+    if (!action) return;
+    try {
+      await updateActionMutation.mutateAsync({
+        id: action.id,
+        payload: payload as UpdateActionPayload,
+      });
+      setIsEditModalOpen(false);
+      setNotification({ message: "Task updated successfully!", severity: "success" });
+      refetch();
+    } catch (err: any) {
+      setNotification({
+        message: err?.response?.data?.errors || err?.response?.data?.message || err?.message || "Failed to update task.",
+        severity: "error",
+      });
+    }
+  };
 
 
   const handleDownloadEvidence = async (ev: GovernanceEvidenceItem) => {
@@ -382,6 +408,29 @@ export const TaskDetailPage: React.FC = () => {
 
           {/* Quick Action Buttons */}
           <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
+            {/* Edit Task: Governance & Action Tracker Only */}
+            {!isAuditMode && !isDocsMode && can_edit_task && (
+              <Button
+                variant="outlined"
+                startIcon={<EditOutlinedIcon />}
+                onClick={() => setIsEditModalOpen(true)}
+                disabled={updateActionMutation.isPending}
+                sx={{
+                  color: colorTokens.primary.main,
+                  borderColor: colorTokens.primary.main,
+                  borderRadius: radiusTokens.sm,
+                  fontWeight: 600,
+                  textTransform: "none",
+                  "&:hover": {
+                    borderColor: colorTokens.primary.dark,
+                    backgroundColor: "#F0F9FF",
+                  },
+                }}
+              >
+                Edit Task
+              </Button>
+            )}
+
             {/* Close Task: Governance Only (Never allowed in Audit Mode) */}
             {!isAuditMode && action.status !== "Closed" && (() => {
               const allowedReviewStatuses = ["Approved", "Review Submitted", "Awaiting Final Approval", "None"];
@@ -1560,6 +1609,18 @@ export const TaskDetailPage: React.FC = () => {
         }}
         onError={(msg) => setNotification({ message: msg, severity: "error" })}
       />
+
+      {/* Edit Task Modal: Governance Module Only */}
+      {isEditModalOpen && (
+        <GovernanceActionModal
+          open={isEditModalOpen}
+          action={action}
+          metadata={metadata}
+          isLoading={updateActionMutation.isPending}
+          onClose={() => setIsEditModalOpen(false)}
+          onSubmit={handleEditTaskSubmit}
+        />
+      )}
     </Box>
   );
 };

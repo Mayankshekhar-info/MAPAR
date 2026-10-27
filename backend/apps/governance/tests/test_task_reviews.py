@@ -22,8 +22,8 @@ def test_setup(db):
     admin = User.objects.create_user(
         username="admin_user",
         email="admin@mapar.co.in",
-        first_name="Admin",
-        last_name="Leader",
+        first_name="Vikram",
+        last_name="Malhotra",
         role=User.Role.SUPER_ADMIN,
         is_staff=True,
     )
@@ -33,8 +33,8 @@ def test_setup(db):
     owner = User.objects.create_user(
         username="task_owner",
         email="owner@mapar.co.in",
-        first_name="Task",
-        last_name="Owner",
+        first_name="Arjun",
+        last_name="Verma",
         role=User.Role.ACTION_OWNER,
         circle=circle,
     )
@@ -44,8 +44,8 @@ def test_setup(db):
     reviewer = User.objects.create_user(
         username="reviewer_user",
         email="reviewer@mapar.co.in",
-        first_name="Authorized",
-        last_name="Reviewer",
+        first_name="Priya",
+        last_name="Sharma",
         role=User.Role.CIRCLE_DOMAIN_MANAGER,
         circle=circle,
     )
@@ -55,8 +55,8 @@ def test_setup(db):
     unauthorized_user = User.objects.create_user(
         username="unauthorized_user",
         email="unauth@mapar.co.in",
-        first_name="Other",
-        last_name="Person",
+        first_name="Rohit",
+        last_name="Patel",
         role=User.Role.ACTION_OWNER,
         circle=other_circle,
     )
@@ -123,10 +123,15 @@ def test_assign_task_review_success(test_setup):
         assert db_review.assigned_reviewer == reviewer
         assert db_review.requested_by == admin
 
-        # Notification dispatched to reviewer
+        # Notification dispatched to reviewer with proper reviewer and assigner names
         mock_send.assert_called_once()
         call_kwargs = mock_send.call_args[1]
         assert call_kwargs["recipient_email"] == "reviewer@mapar.co.in"
+        assert call_kwargs["recipient_name"] == "Priya Sharma"
+        assert "Dear <strong style=\"color: #0F172A;\">Priya Sharma</strong>," in call_kwargs["html_content"]
+        assert "Vikram Malhotra" in call_kwargs["html_content"]
+        assert "Review Assigned By" in call_kwargs["html_content"]
+        assert "Formal Review Required" in call_kwargs["subject"]
         assert call_kwargs["notification_type"] == EmailDeliveryRecord.NotificationType.TASK_REVIEW_ASSIGNMENT
 
 

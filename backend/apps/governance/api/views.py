@@ -178,6 +178,12 @@ class GovernanceActionPointDetailView(APIView):
             )
 
         action = self._get_action(pk, request.user)
+        if not GovernanceService.can_edit_task(action, request.user):
+            return Response(
+                {"success": False, "errors": "You do not have permission to edit this action point."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         serializer = GovernanceActionPointSerializer(action, data=request.data, partial=True)
         if not serializer.is_valid():
             return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
@@ -733,6 +739,7 @@ class GovernanceActionPointFullDetailView(APIView):
             "revision_requests": revision_requests_serializer.data,
             "task_reviews": task_reviews_serializer.data,
             "active_review": active_review_serializer,
+            "can_edit_task": detail_data.get("can_edit_task", False),
             "can_assign_review": detail_data.get("can_assign_review", True),
             "can_submit_for_verification": detail_data.get("can_submit_for_verification", False),
             "can_verify_review": detail_data.get("can_verify_review", False),
