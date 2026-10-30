@@ -47,6 +47,7 @@ import {
 export const governanceService = {
   async getActions(params: GovernanceFilterParams = {}): Promise<GovernanceListResponse> {
     const q = new URLSearchParams();
+    if (params.mode) q.set("mode", params.mode);
     if (params.search) q.set("search", params.search);
     if (params.circle_id) q.set("circle_id", String(params.circle_id));
     if (params.owner_id) q.set("owner_id", String(params.owner_id));
@@ -78,8 +79,11 @@ export const governanceService = {
     return res.data.action;
   },
 
-  async getFullDetail(id: number): Promise<TaskFullDetailResponse> {
-    const res = await api.get<TaskFullDetailResponse>(`/governance/actions/${id}/full-detail/`);
+  async getFullDetail(id: number, mode?: "governance" | "audit" | "documents"): Promise<TaskFullDetailResponse> {
+    const q = new URLSearchParams();
+    if (mode) q.set("mode", mode);
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    const res = await api.get<TaskFullDetailResponse>(`/governance/actions/${id}/full-detail/${qs}`);
     return res.data;
   },
 
@@ -223,10 +227,11 @@ export const governanceService = {
     return res.data;
   },
 
-  async getMetrics(circleId?: number | null, reportingWeek?: string | null): Promise<GovernanceMetrics> {
+  async getMetrics(circleId?: number | null, reportingWeek?: string | null, mode?: "governance" | "audit" | "documents"): Promise<GovernanceMetrics> {
     const q = new URLSearchParams();
     if (circleId) q.set("circle_id", String(circleId));
     if (reportingWeek) q.set("reporting_week", reportingWeek);
+    if (mode) q.set("mode", mode);
     const res = await api.get<{ success: boolean; metrics: GovernanceMetrics }>(`/governance/metrics/?${q.toString()}`);
     return res.data.metrics;
   },

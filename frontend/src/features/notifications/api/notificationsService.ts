@@ -4,6 +4,8 @@ import {
   UpdateSMTPConfigurationPayload,
   ScheduleOverview,
   PaginatedDeliveryLogs,
+  UpdateWeeklySchedulePayload,
+  UpdateWeeklyScheduleResponse,
 } from "../types/notifications.types";
 
 export const notificationsService = {
@@ -39,6 +41,13 @@ export const notificationsService = {
   getScheduleOverview: async (): Promise<ScheduleOverview> => {
     const res = await api.get("/notifications/schedule/");
     return res.data.overview;
+  },
+
+  updateWeeklySchedule: async (
+    payload: UpdateWeeklySchedulePayload
+  ): Promise<UpdateWeeklyScheduleResponse> => {
+    const res = await api.put("/notifications/schedule/", payload);
+    return res.data;
   },
 
   getDeliveryLogs: async (params?: {

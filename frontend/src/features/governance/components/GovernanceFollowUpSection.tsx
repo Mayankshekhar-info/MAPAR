@@ -14,16 +14,9 @@ import NotificationImportantOutlinedIcon from "@mui/icons-material/NotificationI
 import Skeleton from "@mui/material/Skeleton";
 import CheckCircleOutlineOutlinedIcon from "@mui/icons-material/CheckCircleOutlineOutlined";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
-import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
-import CircularProgress from "@mui/material/CircularProgress";
-import Tooltip from "@mui/material/Tooltip";
-import Snackbar from "@mui/material/Snackbar";
-import Alert from "@mui/material/Alert";
 
 import { colorTokens, radiusTokens } from "../../../app/theme/tokens";
 import { UrgentRiskItem } from "../types/governance.types";
-import { useSendUrgentFollowUpEmail } from "../hooks/useGovernance";
-import { SendTaskEmailModal, SendTaskEmailTargetTask } from "./SendTaskEmailModal";
 
 interface GovernanceFollowUpSectionProps {
   urgentItems?: UrgentRiskItem[];
@@ -39,42 +32,6 @@ export const GovernanceFollowUpSection: React.FC<GovernanceFollowUpSectionProps>
   sx,
 }) => {
   const [filterMode, setFilterMode] = useState<"all" | "overdue" | "high_priority" | "evidence">("all");
-  const sendEmailMutation = useSendUrgentFollowUpEmail();
-  const [sendingActionId, setSendingActionId] = useState<number | null>(null);
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const [emailModalTask, setEmailModalTask] = useState<SendTaskEmailTargetTask | null>(null);
-
-  const handleSendEmail = async (item: UrgentRiskItem) => {
-    if (sendingActionId) return;
-    setSendingActionId(item.id);
-    try {
-      const res = await sendEmailMutation.mutateAsync(item.id);
-      if (res.success) {
-        setFeedback({
-          type: "success",
-          message: res.message || `Urgent task alert successfully sent to ${item.owner_name} for ${item.action_id}.`,
-        });
-      } else {
-        setFeedback({
-          type: "error",
-          message: res.message || `Failed to send email alert for ${item.action_id}.`,
-        });
-      }
-    } catch (err: any) {
-      const errMsg =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.message ||
-        "Failed to send email alert. Please check SMTP configuration.";
-      setFeedback({
-        type: "error",
-        message: errMsg,
-      });
-    } finally {
-      setSendingActionId(null);
-    }
-  };
-
   if (isLoading) {
     return (
       <Paper
@@ -289,7 +246,7 @@ export const GovernanceFollowUpSection: React.FC<GovernanceFollowUpSectionProps>
               <TableCell align="center" sx={{ fontWeight: 700, fontSize: "0.75rem", color: colorTokens.text.primary, width: 80 }}>
                 Priority
               </TableCell>
-              <TableCell align="center" sx={{ fontWeight: 700, fontSize: "0.75rem", color: colorTokens.text.primary, width: 190 }}>
+              <TableCell align="center" sx={{ fontWeight: 700, fontSize: "0.75rem", color: colorTokens.text.primary, width: 90 }}>
                 Action
               </TableCell>
             </TableRow>
@@ -451,62 +408,25 @@ export const GovernanceFollowUpSection: React.FC<GovernanceFollowUpSectionProps>
                     />
                   </TableCell>
 
-                  {/* Action Buttons */}
+                  {/* Action Button */}
                   <TableCell align="center">
-                    <Box sx={{ display: "flex", gap: 0.75, justifyContent: "center", alignItems: "center" }}>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        endIcon={<OpenInNewIcon sx={{ fontSize: "12px !important" }} />}
-                        onClick={() => onSelectAction(item.id)}
-                        sx={{
-                          textTransform: "none",
-                          fontSize: "0.7rem",
-                          py: 0.25,
-                          px: 1,
-                          borderColor: colorTokens.workspace.border,
-                          color: colorTokens.primary.main,
-                          "&:hover": { borderColor: colorTokens.primary.main, backgroundColor: "#F0F9FF" },
-                        }}
-                      >
-                        Inspect
-                      </Button>
-
-                      <Tooltip
-                        title={
-                          item.owner_name && item.owner_name !== "Unassigned"
-                            ? `Send urgent follow-up alert email to ${item.owner_name}`
-                            : "Send email alert to assigned owner"
-                        }
-                      >
-                        <span>
-                          <Button
-                            size="small"
-                            variant="contained"
-                            disabled={sendingActionId === item.id}
-                            startIcon={
-                              sendingActionId === item.id ? (
-                                <CircularProgress size={12} color="inherit" />
-                              ) : (
-                                <EmailOutlinedIcon sx={{ fontSize: "13px !important" }} />
-                              )
-                            }
-                            onClick={() => setEmailModalTask(item)}
-                            sx={{
-                              textTransform: "none",
-                              fontSize: "0.7rem",
-                              py: 0.25,
-                              px: 1,
-                              backgroundColor: colorTokens.primary.main,
-                              "&:hover": { backgroundColor: colorTokens.primary.dark },
-                              "&.Mui-disabled": { opacity: 0.65 },
-                            }}
-                          >
-                            Send Email
-                          </Button>
-                        </span>
-                      </Tooltip>
-                    </Box>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      endIcon={<OpenInNewIcon sx={{ fontSize: "12px !important" }} />}
+                      onClick={() => onSelectAction(item.id)}
+                      sx={{
+                        textTransform: "none",
+                        fontSize: "0.7rem",
+                        py: 0.25,
+                        px: 1,
+                        borderColor: colorTokens.workspace.border,
+                        color: colorTokens.primary.main,
+                        "&:hover": { borderColor: colorTokens.primary.main, backgroundColor: "#F0F9FF" },
+                      }}
+                    >
+                      Inspect
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))
@@ -515,33 +435,6 @@ export const GovernanceFollowUpSection: React.FC<GovernanceFollowUpSectionProps>
         </Table>
       </TableContainer>
 
-      {/* Manual Task Email Alert Modal */}
-      <SendTaskEmailModal
-        open={Boolean(emailModalTask)}
-        onClose={() => setEmailModalTask(null)}
-        task={emailModalTask}
-        onSuccess={(msg) => setFeedback({ type: "success", message: msg })}
-        onError={(msg) => setFeedback({ type: "error", message: msg })}
-      />
-
-      {/* Dispatch Feedback Snackbar */}
-      {feedback && (
-        <Snackbar
-          open={Boolean(feedback)}
-          autoHideDuration={6000}
-          onClose={() => setFeedback(null)}
-          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        >
-          <Alert
-            severity={feedback.type}
-            onClose={() => setFeedback(null)}
-            variant="filled"
-            sx={{ width: "100%", boxShadow: 3, fontSize: "0.82rem" }}
-          >
-            {feedback.message}
-          </Alert>
-        </Snackbar>
-      )}
-    </Paper>
+      </Paper>
   );
 };

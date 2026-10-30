@@ -225,6 +225,12 @@ def test_status_matrix_sends_one_consolidated_email_per_user(status_matrix_test_
 def test_status_matrix_controlled_test_override(status_matrix_test_setup):
     """Verifies that override_recipient_email safely routes all emails to the specified controlled test account."""
     admin = status_matrix_test_setup["admin"]
+    User.objects.create_user(
+        username="controlled_test_user",
+        email="test.controlled@pratap.co.in",
+        first_name="Controlled",
+        last_name="Test",
+    )
     client = APIClient()
     client.force_authenticate(user=admin)
 

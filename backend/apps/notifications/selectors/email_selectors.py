@@ -92,7 +92,7 @@ def get_schedule_overview_dto() -> Dict[str, Any]:
         "current_day": day_name,
         "is_within_permitted_window": ReminderSchedulerService.is_within_permitted_window(current_ist),
         "matching_slot": matching_slot,
-        "schedule_matrix": SCHEDULE_SLOTS,
+        "schedule_matrix": ReminderSchedulerService.get_configured_schedule(),
         "eligible_unclosed_tasks": unclosed_tasks_count,
         "overdue_tasks": overdue_count,
         "past_7_days_sent": stats["total_sent"] or 0,

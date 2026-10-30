@@ -20,6 +20,7 @@ from apps.notifications.api.serializers import (
     SendTestEmailSerializer,
     EmailDeliveryRecordSerializer,
     TriggerRemindersSerializer,
+    UpdateWeeklyScheduleSerializer,
 )
 
 
@@ -184,6 +185,7 @@ class EmailDeliveryLogsView(APIView, NotificationBasePermissionMixin):
 class ScheduleOverviewView(APIView, NotificationBasePermissionMixin):
     """
     GET /api/v1/notifications/schedule/ - Real-time metrics on reminder schedule and pending tasks.
+    PUT /api/v1/notifications/schedule/ - Update weekly recurring reminder schedule (days, timings).
     """
     permission_classes = [IsAuthenticated]
 
@@ -191,6 +193,20 @@ class ScheduleOverviewView(APIView, NotificationBasePermissionMixin):
         self.check_admin_view(request.user)
         dto = get_schedule_overview_dto()
         return Response({"success": True, "overview": dto})
+
+    def put(self, request):
+        self.check_admin_edit(request.user)
+        serializer = UpdateWeeklyScheduleSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        updated_schedule = ReminderSchedulerService.update_weekly_schedule(serializer.validated_data["schedule"])
+        dto = get_schedule_overview_dto()
+        return Response({
+            "success": True,
+            "message": "Weekly reminder schedule updated successfully.",
+            "overview": dto,
+        })
 
 
 class TriggerRemindersView(APIView, NotificationBasePermissionMixin):

@@ -261,5 +261,11 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute=0, hour=17, day_of_week="sunday"),
         "kwargs": {"target_slot": "Sunday:17:00"},
     },
+    # Dynamic hourly evaluation for user-configured weekly reminder schedules (8 AM to 8 PM IST)
+    "dynamic-hourly-reminder-evaluation": {
+        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
+        "schedule": crontab(minute=0, hour="8-20"),
+        "kwargs": {},
+    },
 }
 

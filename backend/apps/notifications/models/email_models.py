@@ -68,6 +68,16 @@ class EmailConfiguration(models.Model):
         blank=True,
         help_text="Centrally configured mandatory CC addresses for all task alerts and reminders",
     )
+    DEFAULT_REMINDER_SCHEDULE = {
+        "Friday": ["10:00"],
+        "Saturday": ["09:00", "17:00"],
+        "Sunday": ["09:00", "13:00", "17:00"],
+    }
+    reminder_schedule = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Configurable weekly reminder days and time slots in 24-hour format",
+    )
     DEFAULT_FRONTEND_BASE_URL = "https://pagms.pratap.tech"
 
     frontend_base_url = models.CharField(
@@ -91,6 +101,12 @@ class EmailConfiguration(models.Model):
         """Returns or creates the single active SMTP configuration instance."""
         config, _ = cls.objects.get_or_create(singleton_id=1)
         return config
+
+    def get_reminder_schedule(self) -> dict:
+        """Returns the configured weekly schedule or standard default if not configured."""
+        if isinstance(self.reminder_schedule, dict) and self.reminder_schedule:
+            return self.reminder_schedule
+        return self.DEFAULT_REMINDER_SCHEDULE
 
     def get_effective_cc_list(self) -> list[str]:
         """Returns the mandatory CC addresses, ensuring defaults are present and permanently excluding shakti.singh@pratap.co.in."""

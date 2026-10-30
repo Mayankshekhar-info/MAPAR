@@ -14,24 +14,40 @@ import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import EditCalendarIcon from "@mui/icons-material/EditCalendar";
 
 import { colorTokens, radiusTokens, shadowTokens } from "../../../app/theme/tokens";
 import { ScheduleOverview } from "../types/notifications.types";
+import { EditWeeklyScheduleDialog, formatTime12h } from "./EditWeeklyScheduleDialog";
 
 interface Props {
   overview: ScheduleOverview | undefined;
   isLoading: boolean;
   onTriggerNow: (params?: { slot?: string; force?: boolean; dry_run?: boolean }) => Promise<any>;
   isTriggering: boolean;
+  onUpdateSchedule?: (schedule: Record<string, string[]>) => Promise<any>;
 }
+
+const ORDERED_DAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
 
 export const ScheduleStatusCard: React.FC<Props> = ({
   overview,
   isLoading,
   onTriggerNow,
   isTriggering,
+  onUpdateSchedule,
 }) => {
   const [triggerResult, setTriggerResult] = useState<any>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [scheduleUpdateFeedback, setScheduleUpdateFeedback] = useState<string | null>(null);
 
   const handleRunNow = async (force: boolean) => {
     setTriggerResult(null);
@@ -46,6 +62,14 @@ export const ScheduleStatusCard: React.FC<Props> = ({
     }
   };
 
+  const handleSaveSchedule = async (newSchedule: Record<string, string[]>) => {
+    if (onUpdateSchedule) {
+      const res = await onUpdateSchedule(newSchedule);
+      setScheduleUpdateFeedback(res?.message || "Weekly reminder schedule updated successfully.");
+      return res;
+    }
+  };
+
   if (isLoading) {
     return (
       <Card sx={{ p: 4, display: "flex", justifyContent: "center", borderRadius: radiusTokens.md }}>
@@ -53,6 +77,25 @@ export const ScheduleStatusCard: React.FC<Props> = ({
       </Card>
     );
   }
+
+  // Derive schedule matrix dynamically from overview
+  const scheduleMatrix = overview?.schedule_matrix || {};
+
+  // Find all days with at least 1 slot configured, keeping calendar order
+  const activeDaysWithSlots = ORDERED_DAYS.filter(
+    (day) => scheduleMatrix[day] && Array.isArray(scheduleMatrix[day]) && scheduleMatrix[day].length > 0
+  );
+
+  // If no days with slots configured, fallback to Friday, Saturday, Sunday
+  const displayDays = activeDaysWithSlots.length > 0
+    ? activeDaysWithSlots
+    : ["Friday", "Saturday", "Sunday"];
+
+  // Total weekly reminders calculated dynamically
+  const totalWeeklyReminders = Object.values(scheduleMatrix).reduce(
+    (acc, slots) => acc + (Array.isArray(slots) ? slots.length : 0),
+    0
+  );
 
   return (
     <Card
@@ -70,7 +113,7 @@ export const ScheduleStatusCard: React.FC<Props> = ({
             Recurring Reminder Schedule (Asia/Kolkata)
           </Typography>
           <Typography variant="body2" sx={{ color: colorTokens.text.secondary }}>
-            Automated weekend reminders repeat weekly for all unclosed action points until approved closure.
+            Automated recurring reminders repeat weekly for all unclosed action points until approved closure.
           </Typography>
         </Box>
         <Chip
@@ -141,90 +184,81 @@ export const ScheduleStatusCard: React.FC<Props> = ({
       </Grid>
 
       {/* Reminder Matrix Visual */}
-      <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5, color: colorTokens.text.primary }}>
-        Weekly Scheduled Matrix (8 Reminders / Week)
-      </Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1.5 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: colorTokens.text.primary }}>
+          Weekly Scheduled Matrix ({totalWeeklyReminders} Reminder{totalWeeklyReminders === 1 ? "" : "s"} / Week)
+        </Typography>
+      </Box>
 
+      {/* Schedule Update Feedback Alert */}
+      {scheduleUpdateFeedback && (
+        <Alert
+          severity="success"
+          sx={{ mb: 2 }}
+          onClose={() => setScheduleUpdateFeedback(null)}
+        >
+          {scheduleUpdateFeedback}
+        </Alert>
+      )}
+
+      {/* Dynamically Rendered Matrix Cards */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        {/* Friday */}
-        <Grid size={{ xs: 12, md: 4 }}>
-          <Box
-            sx={{
-              p: 2,
-              borderRadius: radiusTokens.sm,
-              border: `1px solid ${overview?.current_day === "Friday" ? "#2563eb" : colorTokens.workspace.border}`,
-              bgcolor: overview?.current_day === "Friday" ? "#eff6ff" : "#ffffff",
-            }}
-          >
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#1e293b" }}>
-                Friday
-              </Typography>
-              <Chip size="small" label="1 Reminder" color="primary" sx={{ height: 20, fontSize: 11 }} />
-            </Box>
-            <Typography variant="body2" sx={{ color: colorTokens.text.secondary, mb: 1 }}>
-              Weekly planning reminder
-            </Typography>
-            <Stack direction="row" spacing={1}>
-              <Chip label="10:00 AM IST" size="small" variant="outlined" sx={{ fontWeight: 600 }} />
-            </Stack>
-          </Box>
-        </Grid>
+        {displayDays.map((day) => {
+          const slots = scheduleMatrix[day] || [];
+          const isToday = overview?.current_day === day;
+          const count = slots.length;
 
-        {/* Saturday */}
-        <Grid size={{ xs: 12, md: 4 }}>
-          <Box
-            sx={{
-              p: 2,
-              borderRadius: radiusTokens.sm,
-              border: `1px solid ${overview?.current_day === "Saturday" ? "#2563eb" : colorTokens.workspace.border}`,
-              bgcolor: overview?.current_day === "Saturday" ? "#eff6ff" : "#ffffff",
-            }}
-          >
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#1e293b" }}>
-                Saturday
-              </Typography>
-              <Chip size="small" label="3 Reminders" color="secondary" sx={{ height: 20, fontSize: 11 }} />
-            </Box>
-            <Typography variant="body2" sx={{ color: colorTokens.text.secondary, mb: 1 }}>
-              Morning, afternoon, evening
-            </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              <Chip label="09:00 AM" size="small" variant="outlined" sx={{ fontWeight: 600 }} />
-              <Chip label="01:00 PM" size="small" variant="outlined" sx={{ fontWeight: 600 }} />
-              <Chip label="05:00 PM" size="small" variant="outlined" sx={{ fontWeight: 600 }} />
-            </Stack>
-          </Box>
-        </Grid>
-
-        {/* Sunday */}
-        <Grid size={{ xs: 12, md: 4 }}>
-          <Box
-            sx={{
-              p: 2,
-              borderRadius: radiusTokens.sm,
-              border: `1px solid ${overview?.current_day === "Sunday" ? "#2563eb" : colorTokens.workspace.border}`,
-              bgcolor: overview?.current_day === "Sunday" ? "#eff6ff" : "#ffffff",
-            }}
-          >
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#1e293b" }}>
-                Sunday
-              </Typography>
-              <Chip size="small" label="4 Reminders" color="warning" sx={{ height: 20, fontSize: 11 }} />
-            </Box>
-            <Typography variant="body2" sx={{ color: colorTokens.text.secondary, mb: 1 }}>
-              Closure deadline reminders
-            </Typography>
-            <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
-              <Chip label="09:00 AM" size="small" variant="outlined" sx={{ fontWeight: 600 }} />
-              <Chip label="12:00 PM" size="small" variant="outlined" sx={{ fontWeight: 600 }} />
-              <Chip label="03:00 PM" size="small" variant="outlined" sx={{ fontWeight: 600 }} />
-              <Chip label="06:00 PM" size="small" variant="outlined" sx={{ fontWeight: 600 }} />
-            </Stack>
-          </Box>
-        </Grid>
+          return (
+            <Grid key={day} size={{ xs: 12, sm: 6, md: 12 / Math.min(Math.max(displayDays.length, 1), 4) }}>
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: radiusTokens.sm,
+                  border: `1.5px solid ${isToday ? "#2563eb" : colorTokens.workspace.border}`,
+                  bgcolor: isToday ? "#eff6ff" : "#ffffff",
+                  height: "100%",
+                }}
+              >
+                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#1e293b" }}>
+                    {day} {isToday && <span style={{ color: "#2563eb", fontSize: "0.75rem" }}>(Today)</span>}
+                  </Typography>
+                  <Chip
+                    size="small"
+                    label={`${count} Reminder${count === 1 ? "" : "s"}`}
+                    color={count > 2 ? "secondary" : (count > 0 ? "primary" : "default")}
+                    sx={{ height: 20, fontSize: 11, fontWeight: 600 }}
+                  />
+                </Box>
+                <Typography variant="body2" sx={{ color: colorTokens.text.secondary, mb: 1.5, fontSize: "0.8rem" }}>
+                  {count === 0 ? "No reminder cycles scheduled" : "Scheduled cycle timings:"}
+                </Typography>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  {count > 0 ? (
+                    slots.map((slot) => (
+                      <Chip
+                        key={slot}
+                        label={`${formatTime12h(slot)} IST`}
+                        size="small"
+                        variant="outlined"
+                        color={overview?.matching_slot === `${day}:${slot}` ? "success" : "default"}
+                        sx={{
+                          fontWeight: 600,
+                          fontSize: "0.75rem",
+                          borderWidth: "1.5px",
+                        }}
+                      />
+                    ))
+                  ) : (
+                    <Typography variant="caption" sx={{ color: "#94a3b8", fontStyle: "italic" }}>
+                      Disabled
+                    </Typography>
+                  )}
+                </Stack>
+              </Box>
+            </Grid>
+          );
+        })}
       </Grid>
 
       {/* Manual Trigger Result Alert */}
@@ -259,6 +293,23 @@ export const ScheduleStatusCard: React.FC<Props> = ({
         </Typography>
 
         <Stack direction="row" spacing={1.5}>
+          {/* Edit Weekly Schedule Action Button */}
+          <Button
+            variant="outlined"
+            size="small"
+            color="primary"
+            startIcon={<EditCalendarIcon />}
+            onClick={() => setIsEditModalOpen(true)}
+            sx={{
+              textTransform: "none",
+              fontWeight: 700,
+              borderRadius: radiusTokens.sm,
+            }}
+          >
+            Edit Weekly Schedule
+          </Button>
+
+          {/* Force Run Action Button */}
           <Button
             variant="outlined"
             size="small"
@@ -266,11 +317,24 @@ export const ScheduleStatusCard: React.FC<Props> = ({
             startIcon={isTriggering ? <CircularProgress size={14} /> : <PlayArrowIcon />}
             onClick={() => handleRunNow(true)}
             disabled={isTriggering}
+            sx={{
+              textTransform: "none",
+              fontWeight: 700,
+              borderRadius: radiusTokens.sm,
+            }}
           >
             Force Run Reminder Cycle Now
           </Button>
         </Stack>
       </Box>
+
+      {/* Edit Weekly Schedule Dialog */}
+      <EditWeeklyScheduleDialog
+        open={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        currentSchedule={overview?.schedule_matrix}
+        onSave={handleSaveSchedule}
+      />
     </Card>
   );
 };

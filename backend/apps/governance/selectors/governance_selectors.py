@@ -70,15 +70,20 @@ def get_available_reporting_weeks(user: User) -> List[str]:
     return sort_reporting_weeks_desc(list(all_weeks))
 
 
-def apply_governance_scope(queryset, user):
+def apply_governance_scope(queryset, user, mode: Optional[str] = None):
     """
     Applies role-based and organization-hierarchy scoped access to governance actions.
+    - Audit & Action Owner workflow (mode="audit"): View ONLY actions genuinely assigned to the user (owner or assigned reviewer).
     - Super Admin / Unrestricted Corporate: View all actions across enterprise.
     - Scoped roles (e.g. CBH, Circle Validator, Data Entry, Viewer): View actions belonging to authorized Circle(s).
-    - Action Owner / Creator / Assigner: View actions assigned to them or created/assigned by them.
+    - Action Owner role: View ONLY actions genuinely assigned to them as owner or assigned reviewer.
     """
     if not user or not user.is_authenticated:
         return queryset.none()
+
+    # In Audit & Action Owner mode, EVERY user (even superusers/managers) sees strictly their assigned tasks
+    if mode == "audit":
+        return queryset.filter(Q(owner=user) | Q(assigned_reviewer=user)).distinct()
 
     if user.is_superuser or getattr(user, "is_superadmin", False):
         return queryset
@@ -88,19 +93,13 @@ def apply_governance_scope(queryset, user):
     if scope.is_unrestricted:
         return queryset
 
-    user_accessible_q = (
-        Q(owner=user)
-        | Q(created_by=user)
-        | Q(assigned_by=user)
-        | Q(assigned_reviewer=user)
-        | Q(task_reviews__assigned_reviewer=user)
-    )
+    user_assigned_q = Q(owner=user) | Q(assigned_reviewer=user)
+    user_accessible_q = user_assigned_q | Q(created_by=user) | Q(assigned_by=user)
 
     role = getattr(user, "role", None)
     if role == User.Role.ACTION_OWNER:
-        if scope.circle_ids:
-            return queryset.filter(Q(circle_id__in=scope.circle_ids) | user_accessible_q).distinct()
-        return queryset.filter(user_accessible_q).distinct()
+        # Action Owner role is strictly restricted to tasks genuinely assigned to them
+        return queryset.filter(user_assigned_q).distinct()
 
     if scope.circle_ids is not None:
         return queryset.filter(Q(circle_id__in=scope.circle_ids) | user_accessible_q).distinct()
@@ -120,85 +119,108 @@ def get_governance_actions(filters: Dict[str, Any], user: User):
     """
     from apps.governance.models import GovernanceTaskReview
     qs = GovernanceActionPoint.objects.select_related("circle", "owner", "assigned_by", "created_by", "assigned_reviewer").all()
-    qs = apply_governance_scope(qs, user)
+    mode = filters.get("mode")
+    qs = apply_governance_scope(qs, user, mode=mode)
+
+    is_audit_or_action_owner = (mode == "audit" or getattr(user, "role", None) == User.Role.ACTION_OWNER)
+    if is_audit_or_action_owner:
+        qs = qs.filter(Q(owner=user) | Q(assigned_reviewer=user)).distinct()
 
     # View Mode Filter
     view_mode = filters.get("view_mode")
     if view_mode == "my_tasks":
         qs = qs.filter(owner=user)
     elif view_mode in ["created_by_me", "created_by"]:
-        qs = qs.filter(created_by=user)
+        if is_audit_or_action_owner:
+            qs = qs.none()
+        else:
+            qs = qs.filter(created_by=user)
     elif view_mode == "assigned_for_review":
-        qs = qs.filter(
-            Q(assigned_reviewer__isnull=False) | Q(task_reviews__isnull=False)
-        ).distinct()
+        if is_audit_or_action_owner:
+            qs = qs.filter(assigned_reviewer=user)
+        else:
+            qs = qs.filter(
+                Q(assigned_reviewer__isnull=False) | Q(task_reviews__isnull=False)
+            ).distinct()
     elif view_mode == "review_submitted":
-        qs = qs.filter(
-            Q(review_workflow_status__in=[
-                GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_SUBMITTED,
-                GovernanceActionPoint.ReviewWorkflowStatus.AWAITING_APPROVAL,
-                "Verified",
-            ])
-            | Q(task_reviews__status__in=[
-                GovernanceTaskReview.Status.REVIEW_SUBMITTED,
-                GovernanceTaskReview.Status.VERIFIED,
-            ])
-        ).distinct()
-    elif view_mode in ["assigned_to_me", "my_reviews", "assigned_to_me_for_review"]:
-        qs = qs.filter(
-            Q(assigned_reviewer=user) | Q(task_reviews__assigned_reviewer=user)
-        ).distinct()
-    elif view_mode == "pending_reviews":
-        qs = qs.filter(
-            (Q(assigned_reviewer=user) | Q(task_reviews__assigned_reviewer=user))
-            & (
-                Q(review_workflow_status__in=[
-                    GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_ASSIGNED,
-                    GovernanceActionPoint.ReviewWorkflowStatus.SUBMITTED_FOR_REVIEW,
-                    GovernanceActionPoint.ReviewWorkflowStatus.NONE,
-                    "Pending Review",
-                    "In Review",
-                ])
-                | Q(task_reviews__status__in=[
-                    GovernanceTaskReview.Status.PENDING_REVIEW,
-                    GovernanceTaskReview.Status.IN_REVIEW,
-                    GovernanceTaskReview.Status.SUBMITTED_FOR_REVIEW,
-                ])
+        if is_audit_or_action_owner:
+            qs = qs.filter(
+                assigned_reviewer=user,
+                review_workflow_status__in=[
+                    GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_SUBMITTED,
+                    GovernanceActionPoint.ReviewWorkflowStatus.AWAITING_APPROVAL,
+                    "Verified",
+                ]
             )
-        ).distinct()
-    elif view_mode == "submitted_reviews":
-        qs = qs.filter(
-            (Q(assigned_reviewer=user) | Q(task_reviews__assigned_reviewer=user))
-            & (
+        else:
+            qs = qs.filter(
                 Q(review_workflow_status__in=[
                     GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_SUBMITTED,
                     GovernanceActionPoint.ReviewWorkflowStatus.AWAITING_APPROVAL,
-                    GovernanceActionPoint.ReviewWorkflowStatus.APPROVED,
-                    GovernanceActionPoint.ReviewWorkflowStatus.REWORK_REQUIRED,
                     "Verified",
                 ])
                 | Q(task_reviews__status__in=[
                     GovernanceTaskReview.Status.REVIEW_SUBMITTED,
                     GovernanceTaskReview.Status.VERIFIED,
-                    GovernanceTaskReview.Status.REVIEWED,
-                    GovernanceTaskReview.Status.APPROVED,
-                    GovernanceTaskReview.Status.REWORK_REQUIRED,
                 ])
-            )
-        ).distinct()
-    elif view_mode == "missing_weekly":
+            ).distinct()
+    elif view_mode in ["assigned_to_me", "my_reviews", "assigned_to_me_for_review"]:
+        qs = qs.filter(assigned_reviewer=user)
+    elif view_mode == "pending_reviews":
         qs = qs.filter(
-            status__in=[GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP]
-        ).annotate(updates_count=Count("weekly_updates")).filter(updates_count=0)
+            assigned_reviewer=user,
+            review_workflow_status__in=[
+                GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_ASSIGNED,
+                GovernanceActionPoint.ReviewWorkflowStatus.SUBMITTED_FOR_REVIEW,
+                GovernanceActionPoint.ReviewWorkflowStatus.NONE,
+                "Pending Review",
+                "In Review",
+            ]
+        )
+    elif view_mode == "submitted_reviews":
+        qs = qs.filter(
+            assigned_reviewer=user,
+            review_workflow_status__in=[
+                GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_SUBMITTED,
+                GovernanceActionPoint.ReviewWorkflowStatus.AWAITING_APPROVAL,
+                GovernanceActionPoint.ReviewWorkflowStatus.APPROVED,
+                GovernanceActionPoint.ReviewWorkflowStatus.REWORK_REQUIRED,
+                "Verified",
+            ]
+        )
+    elif view_mode == "missing_weekly":
+        if is_audit_or_action_owner:
+            qs = qs.filter(
+                owner=user,
+                status__in=[GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP]
+            ).annotate(updates_count=Count("weekly_updates")).filter(updates_count=0)
+        else:
+            qs = qs.filter(
+                status__in=[GovernanceActionPoint.Status.OPEN, GovernanceActionPoint.Status.WIP]
+            ).annotate(updates_count=Count("weekly_updates")).filter(updates_count=0)
     elif view_mode == "evidence_review":
-        qs = qs.filter(evidence_status__in=[
-            GovernanceActionPoint.EvidenceStatus.PENDING_REVIEW,
-            GovernanceActionPoint.EvidenceStatus.REWORK_REQUIRED,
-        ])
+        if is_audit_or_action_owner:
+            qs = qs.filter(
+                Q(owner=user) | Q(assigned_reviewer=user),
+                evidence_status__in=[
+                    GovernanceActionPoint.EvidenceStatus.PENDING_REVIEW,
+                    GovernanceActionPoint.EvidenceStatus.REWORK_REQUIRED,
+                ]
+            )
+        else:
+            qs = qs.filter(evidence_status__in=[
+                GovernanceActionPoint.EvidenceStatus.PENDING_REVIEW,
+                GovernanceActionPoint.EvidenceStatus.REWORK_REQUIRED,
+            ])
+    elif view_mode == "all":
+        if is_audit_or_action_owner:
+            qs = qs.filter(Q(owner=user) | Q(assigned_reviewer=user))
 
     reviewer_id = filters.get("reviewer_id")
     if reviewer_id:
-        qs = qs.filter(task_reviews__assigned_reviewer_id=reviewer_id).distinct()
+        if is_audit_or_action_owner and reviewer_id != user.id:
+            return qs.none()
+        qs = qs.filter(assigned_reviewer_id=reviewer_id)
 
     # Hierarchy Level and Node Filter
     hierarchy_level = filters.get("hierarchy_level")
@@ -256,13 +278,22 @@ def get_governance_actions(filters: Dict[str, Any], user: User):
     if function_area and function_area != "ALL":
         qs = qs.filter(function_area=function_area)
 
-    # Owner filter
+    # Owner filter: in audit mode / for action owners, cannot view another owner's tasks
     owner_id = filters.get("owner_id")
     if owner_id:
+        if is_audit_or_action_owner and owner_id != user.id:
+            return qs.none()
         qs = qs.filter(owner_id=owner_id)
     else:
         owner_name = filters.get("owner_name")
         if owner_name:
+            if is_audit_or_action_owner:
+                user_full_name = f"{user.first_name} {user.last_name}".strip()
+                if (
+                    owner_name.lower() != user.username.lower()
+                    and owner_name.lower() != user_full_name.lower()
+                ):
+                    return qs.none()
             qs = qs.filter(
                 Q(owner_name_override__iexact=owner_name)
                 | Q(owner__first_name__icontains=owner_name)
@@ -377,7 +408,7 @@ def get_governance_actions(filters: Dict[str, Any], user: User):
 
 
 def get_governance_summary_metrics(
-    user: User, circle_id: Optional[int] = None, reporting_week: Optional[str] = None
+    user: User, circle_id: Optional[int] = None, reporting_week: Optional[str] = None, mode: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Computes dashboard metrics from live database records within authorized scope.
@@ -389,7 +420,11 @@ def get_governance_summary_metrics(
     available_weeks = get_available_reporting_weeks(user)
 
     qs = GovernanceActionPoint.objects.all()
-    qs = apply_governance_scope(qs, user)
+    qs = apply_governance_scope(qs, user, mode=mode)
+
+    is_audit_mode = (mode == "audit" or getattr(user, "role", None) == User.Role.ACTION_OWNER)
+    if is_audit_mode:
+        qs = qs.filter(Q(owner=user) | Q(assigned_reviewer=user)).distinct()
 
     if circle_id:
         qs = qs.filter(circle_id=circle_id)
@@ -588,45 +623,29 @@ def get_governance_summary_metrics(
     ).distinct().count()
 
     assigned_to_me_review_count = qs.filter(
-        Q(assigned_reviewer=user) | Q(task_reviews__assigned_reviewer=user)
+        assigned_reviewer=user
     ).distinct().count()
 
     pending_reviews_count = qs.filter(
-        (Q(assigned_reviewer=user) | Q(task_reviews__assigned_reviewer=user))
-        & (
-            Q(review_workflow_status__in=[
-                GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_ASSIGNED,
-                GovernanceActionPoint.ReviewWorkflowStatus.SUBMITTED_FOR_REVIEW,
-                GovernanceActionPoint.ReviewWorkflowStatus.NONE,
-                "Pending Review",
-                "In Review",
-            ])
-            | Q(task_reviews__status__in=[
-                GovernanceTaskReview.Status.PENDING_REVIEW,
-                GovernanceTaskReview.Status.IN_REVIEW,
-                GovernanceTaskReview.Status.SUBMITTED_FOR_REVIEW,
-            ])
-        )
+        assigned_reviewer=user,
+        review_workflow_status__in=[
+            GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_ASSIGNED,
+            GovernanceActionPoint.ReviewWorkflowStatus.SUBMITTED_FOR_REVIEW,
+            GovernanceActionPoint.ReviewWorkflowStatus.NONE,
+            "Pending Review",
+            "In Review",
+        ],
     ).distinct().count()
 
     submitted_reviews_count = qs.filter(
-        (Q(assigned_reviewer=user) | Q(task_reviews__assigned_reviewer=user))
-        & (
-            Q(review_workflow_status__in=[
-                GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_SUBMITTED,
-                GovernanceActionPoint.ReviewWorkflowStatus.AWAITING_APPROVAL,
-                GovernanceActionPoint.ReviewWorkflowStatus.APPROVED,
-                GovernanceActionPoint.ReviewWorkflowStatus.REWORK_REQUIRED,
-                "Verified",
-            ])
-            | Q(task_reviews__status__in=[
-                GovernanceTaskReview.Status.REVIEW_SUBMITTED,
-                GovernanceTaskReview.Status.VERIFIED,
-                GovernanceTaskReview.Status.REVIEWED,
-                GovernanceTaskReview.Status.APPROVED,
-                GovernanceTaskReview.Status.REWORK_REQUIRED,
-            ])
-        )
+        assigned_reviewer=user,
+        review_workflow_status__in=[
+            GovernanceActionPoint.ReviewWorkflowStatus.REVIEW_SUBMITTED,
+            GovernanceActionPoint.ReviewWorkflowStatus.AWAITING_APPROVAL,
+            GovernanceActionPoint.ReviewWorkflowStatus.APPROVED,
+            GovernanceActionPoint.ReviewWorkflowStatus.REWORK_REQUIRED,
+            "Verified",
+        ],
     ).distinct().count()
 
     # Due in 3 days & No update in 7 days
@@ -824,6 +843,27 @@ def get_governance_summary_metrics(
         "evidence_not_submitted": my_evidence_not_submitted,
     }
 
+    if is_audit_mode:
+        total_actions = my_total
+        open_count = my_open
+        wip_count = my_wip
+        closed_count = my_closed
+        overdue_count = my_overdue
+        upcoming_count = my_upcoming
+        missing_weekly_count = my_missing_weekly
+        overall_completion_rate = my_completion_rate
+        status_counts = {
+            "Open": my_open,
+            "WIP": my_wip,
+            "Closed": my_closed,
+        }
+        evidence_counts = {
+            "Not Submitted": my_evidence_not_submitted,
+            "Pending Review": my_evidence_pending,
+            "Accepted": my_evidence_accepted,
+            "Rework Required": my_evidence_rework,
+        }
+
     # Completion Rate and Closure Performance
     overall_completion_rate = round((closed_count / total_actions * 100), 1) if total_actions > 0 else 0.0
     closed_qs = qs.filter(status=GovernanceActionPoint.Status.CLOSED)
@@ -959,12 +999,12 @@ def get_governance_summary_metrics(
     }
 
 
-def get_task_weekly_updates(action_point_id: int, user: User):
+def get_task_weekly_updates(action_point_id: int, user: User, mode: Optional[str] = None):
     """
     Fetches chronological weekly updates for an action point with scope check.
     """
     qs = GovernanceActionPoint.objects.all()
-    qs = apply_governance_scope(qs, user)
+    qs = apply_governance_scope(qs, user, mode=mode)
     action_point = qs.filter(id=action_point_id).first()
     if not action_point:
         return None
@@ -973,7 +1013,7 @@ def get_task_weekly_updates(action_point_id: int, user: User):
     return GovernanceWeeklyUpdate.objects.filter(action_point=action_point).select_related("submitted_by").order_by("submitted_at", "id")
 
 
-def get_task_full_detail(action_point_id: int, user: User) -> Optional[Dict[str, Any]]:
+def get_task_full_detail(action_point_id: int, user: User, mode: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Retrieves full comprehensive details for dedicated Task Detail Page.
     Includes task metadata, hierarchy path, weekly updates timeline,
@@ -981,9 +1021,9 @@ def get_task_full_detail(action_point_id: int, user: User) -> Optional[Dict[str,
     """
     qs = GovernanceActionPoint.objects.select_related(
         "circle", "domain", "department", "sub_department",
-        "owner", "assigned_by", "created_by"
+        "owner", "assigned_by", "created_by", "assigned_reviewer"
     ).all()
-    qs = apply_governance_scope(qs, user)
+    qs = apply_governance_scope(qs, user, mode=mode)
     action = qs.filter(id=action_point_id).first()
     if not action:
         return None

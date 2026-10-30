@@ -21,7 +21,6 @@ import FilterListIcon from "@mui/icons-material/FilterList";
 
 import Skeleton from "@mui/material/Skeleton";
 import Button from "@mui/material/Button";
-import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
 
 import { colorTokens, radiusTokens } from "../../../app/theme/tokens";
 import { GovernanceMetrics, CircleDistribution, OwnerDistribution } from "../types/governance.types";
@@ -701,13 +700,6 @@ export const GovernanceStatusMatrix: React.FC<GovernanceStatusMatrixProps> = ({
         </Table>
       </TableContainer>
 
-      {/* Send Matrix Consolidated Email Modal */}
-      <SendMatrixEmailModal
-        open={sendModalOpen}
-        onClose={() => setSendModalOpen(false)}
-        reportingWeek={reportingWeek || metrics?.reporting_week}
-        circleId={activeCircleId}
-      />
     </Paper>
   );
 };

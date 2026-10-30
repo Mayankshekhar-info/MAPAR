@@ -80,3 +80,59 @@ class TriggerRemindersSerializer(serializers.Serializer):
     slot = serializers.CharField(required=False, allow_blank=True, default="")
     force = serializers.BooleanField(required=False, default=False)
     dry_run = serializers.BooleanField(required=False, default=False)
+
+
+class UpdateWeeklyScheduleSerializer(serializers.Serializer):
+    VALID_DAYS = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    ]
+
+    schedule = serializers.DictField(
+        child=serializers.ListField(
+            child=serializers.CharField(),
+            allow_empty=True,
+        ),
+        required=True,
+    )
+
+    def validate_schedule(self, value):
+        import re
+        time_pattern = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+        validated = {}
+
+        for day, times in value.items():
+            normalized_day = day.strip().capitalize()
+            # Match against case-insensitive valid day names
+            matched_day = None
+            for vd in self.VALID_DAYS:
+                if vd.lower() == normalized_day.lower():
+                    matched_day = vd
+                    break
+
+            if not matched_day:
+                raise serializers.ValidationError(f"Invalid day: '{day}'. Must be one of {self.VALID_DAYS}.")
+
+            cleaned_times = []
+            for t in times:
+                t_str = str(t).strip()
+                # Accept HH:MM
+                if not time_pattern.match(t_str):
+                    raise serializers.ValidationError(
+                        f"Invalid time format for {matched_day}: '{t_str}'. Expected HH:MM in 24-hour format."
+                    )
+                if t_str in cleaned_times:
+                    raise serializers.ValidationError(
+                        f"Duplicate time slot '{t_str}' specified for {matched_day}."
+                    )
+                cleaned_times.append(t_str)
+
+            cleaned_times.sort()
+            validated[matched_day] = cleaned_times
+
+        return validated

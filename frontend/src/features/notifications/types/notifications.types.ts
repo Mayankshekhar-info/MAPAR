@@ -65,3 +65,13 @@ export interface PaginatedDeliveryLogs {
   previous: string | null;
   results: EmailDeliveryRecord[];
 }
+
+export interface UpdateWeeklySchedulePayload {
+  schedule: Record<string, string[]>;
+}
+
+export interface UpdateWeeklyScheduleResponse {
+  success: boolean;
+  message?: string;
+  overview: ScheduleOverview;
+}

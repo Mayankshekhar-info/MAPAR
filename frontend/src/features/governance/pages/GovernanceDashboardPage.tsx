@@ -95,13 +95,16 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
     page_size: 25,
     ordering: "-raised_date",
     view_mode: effectiveMode === "audit" ? "my_tasks" : "all",
+    mode: effectiveMode,
   });
 
   useEffect(() => {
     if (effectiveMode === "audit") {
-      setFilters((prev) => ({ ...prev, view_mode: "my_tasks", page: 1 }));
+      setFilters((prev) => ({ ...prev, view_mode: "my_tasks", page: 1, mode: "audit" }));
     } else if (effectiveMode === "governance") {
-      setFilters((prev) => ({ ...prev, view_mode: "all", page: 1 }));
+      setFilters((prev) => ({ ...prev, view_mode: "all", page: 1, mode: "governance" }));
+    } else {
+      setFilters((prev) => ({ ...prev, mode: "documents" }));
     }
     setSelectedTaskIds([]);
     setSelectedEvidenceIds([]);
@@ -136,7 +139,8 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
   const { data: actionsData, isLoading: isLoadingActions, refetch: refetchActions } = useGovernanceList(filters);
   const { data: metricsData, isLoading: isLoadingMetrics, refetch: refetchMetrics } = useGovernanceMetrics(
     filters.circle_id,
-    filters.reporting_week
+    filters.reporting_week,
+    effectiveMode
   );
   const { data: metadata } = useGovernanceMetadata();
   const {
@@ -649,7 +653,7 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
       </Box>
 
       {/* Dynamic Summary Metrics Bar in Native MAPAR Theme */}
-      {effectiveMode !== "documents" && (
+      {effectiveMode === "governance" && (
         <GovernanceMetricsBar
           metrics={metricsData}
           isLoading={isLoadingMetrics}
@@ -720,6 +724,7 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
             handleFilterChange({
               status: qFilter.status,
               is_overdue: qFilter.is_overdue,
+              is_due_soon: qFilter.is_due_soon,
               view_mode: (qFilter.view_mode as any) || "my_tasks",
               page: 1,
             });

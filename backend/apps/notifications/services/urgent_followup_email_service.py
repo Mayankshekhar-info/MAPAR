@@ -29,6 +29,13 @@ class UrgentFollowUpEmailService:
         Sends an urgent follow-up task alert email to the action point's owner or a selected application user.
         Returns: (success: bool, message: str, record: Optional[EmailDeliveryRecord])
         """
+        if triggered_by and getattr(triggered_by, "role", None) == User.Role.ACTION_OWNER:
+            logger.warning(
+                "Email sending is disabled for Audit & Action Tracker. Urgent follow-up request blocked (triggered_by=%s).",
+                getattr(triggered_by, "username", "unknown"),
+            )
+            return False, "Email sending has been disabled for all Audit & Action Tracker users.", None
+
         if not action_point:
             return False, "Action point does not exist.", None
 

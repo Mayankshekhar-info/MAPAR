@@ -1,5 +1,5 @@
 import React from "react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { GovernanceOwnerDashboardCard } from "../components/GovernanceOwnerDashboardCard";
@@ -13,6 +13,8 @@ import { GovernanceExecutionCard } from "../components/GovernanceExecutionCard";
 import { GovernancePeriodControl } from "../components/GovernancePeriodControl";
 import { WeeklyProgressTimeline } from "../components/WeeklyProgressTimeline";
 import { ActionOwnerTasksPage } from "../pages/ActionOwnerTasksPage";
+import { GovernanceDashboardPage } from "../pages/GovernanceDashboardPage";
+import { GovernanceDetailDrawer } from "../components/GovernanceDetailDrawer";
 import { TaskReviewsCard } from "../components/TaskReviewsCard";
 import { AssignTaskReviewModal } from "../components/AssignTaskReviewModal";
 import { SubmitTaskReviewModal } from "../components/SubmitTaskReviewModal";
@@ -20,6 +22,7 @@ import { governanceService } from "../api/governanceService";
 import { MyProgressMetrics, GovernanceActionPoint, GovernanceMetrics, OwnerDistribution, GovernanceTaskReview } from "../types/governance.types";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { api } from "../../../services/api";
 
 describe("GovernanceOwnerDashboardCard Component", () => {
   const sampleProgress: MyProgressMetrics = {
@@ -423,7 +426,7 @@ describe("GovernanceFollowUpSection Component", () => {
     expect(screen.getByText("Zero Urgent Risks")).toBeInTheDocument();
   });
 
-  it("renders urgent task items with Inspect and Send Email action buttons", () => {
+  it("renders urgent task items with Inspect action button and confirms Send Email is NOT present", () => {
     const handleSelectAction = vi.fn();
     const urgentItems = [
       {
@@ -455,11 +458,10 @@ describe("GovernanceFollowUpSection Component", () => {
     expect(screen.getByText("Rahul Verma")).toBeInTheDocument();
     expect(screen.getByText("3d overdue")).toBeInTheDocument();
 
-    // Verify both Inspect and Send Email buttons are rendered
+    // Verify Inspect button is rendered and Send Email is absent
     const inspectBtn = screen.getByRole("button", { name: /Inspect/i });
-    const sendEmailBtn = screen.getByRole("button", { name: /Send Email/i });
     expect(inspectBtn).toBeInTheDocument();
-    expect(sendEmailBtn).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Send Email/i })).not.toBeInTheDocument();
 
     // Clicking Inspect triggers onSelectAction with the task ID
     fireEvent.click(inspectBtn);
@@ -704,12 +706,11 @@ describe("ActionOwnerTasksPage Component", () => {
     expect(screen.getByText("Quarterly Safety Protocol Review")).toBeInTheDocument();
     expect(screen.getByText("Back to Action Status Matrix")).toBeInTheDocument();
 
-    // Verify Send Email button is rendered in the owner summary/header area
-    const sendEmailBtn = screen.getByRole("button", { name: /Send Email/i });
-    expect(sendEmailBtn).toBeInTheDocument();
+    // Verify Send Email button is NOT rendered
+    expect(screen.queryByRole("button", { name: /Send Email/i })).not.toBeInTheDocument();
   }, 15000);
 
-  it("opens SendOwnerEmailModal and displays eligible tasks preview when Send Email is clicked", async () => {
+  it("confirms Send Email button and email modal are NOT present in Governance mode", async () => {
     vi.spyOn(governanceService, "getActions").mockResolvedValue({
       success: true,
       count: 2,
@@ -730,34 +731,7 @@ describe("ActionOwnerTasksPage Component", () => {
           current_target_date: "2026-11-15",
           target_closure_date: "2026-11-15",
         } as any,
-        {
-          id: 102,
-          action_id: "ACT-00102",
-          circle: { id: 1, name: "Punjab" },
-          function_area: "Operations",
-          action_point: "Past Completed Audit",
-          owner: { id: 5, full_name: "Rahul Sharma", email: "rahul@example.com" },
-          status: "Closed",
-          priority: "Medium",
-          current_progress_percent: 100,
-          current_target_date: "2026-10-15",
-          target_closure_date: "2026-10-15",
-        } as any,
       ],
-    });
-
-    vi.spyOn(governanceService, "getOwnerEmailPreview").mockResolvedValue({
-      success: true,
-      owner_id: 5,
-      recipient_name: "Rahul Sharma",
-      recipient_email: "rahul@example.com",
-      has_valid_email: true,
-      eligible_task_count: 1,
-      action_ids: ["ACT-00101"],
-      closed_tasks_excluded_count: 1,
-      overdue_count: 0,
-      high_priority_count: 1,
-      has_eligible_tasks: true,
     });
 
     render(
@@ -768,16 +742,47 @@ describe("ActionOwnerTasksPage Component", () => {
       </MemoryRouter>
     );
 
-    const sendEmailBtn = await screen.findByRole("button", { name: /Send Email/i });
-    fireEvent.click(sendEmailBtn);
+    await screen.findByText("ACT-00101");
+    expect(screen.queryByRole("button", { name: /Send Email/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 
-    // Modal opens and shows preview details
-    const dialog = await screen.findByRole("dialog");
-    expect(dialog).toBeInTheDocument();
-    expect(within(dialog).getByText(/Send Consolidated Action Tasks Email/i)).toBeInTheDocument();
-    expect(within(dialog).getByText("rahul@example.com")).toBeInTheDocument();
-    expect(within(dialog).getByText("ELIGIBLE ACTIVE TASKS")).toBeInTheDocument();
-    expect(within(dialog).getByText("CLOSED TASKS EXCLUDED")).toBeInTheDocument();
+  it("confirms Send Email button and email modal are NOT present in Audit & Action Owner mode", async () => {
+    vi.spyOn(governanceService, "getActions").mockResolvedValue({
+      success: true,
+      count: 2,
+      total_pages: 1,
+      current_page: 1,
+      page_size: 150,
+      results: [
+        {
+          id: 101,
+          action_id: "ACT-00101",
+          circle: { id: 1, name: "Punjab" },
+          function_area: "Operations",
+          action_point: "Quarterly Safety Protocol Review",
+          owner: { id: 5, full_name: "Rahul Sharma", email: "rahul@example.com" },
+          status: "Open",
+          priority: "High",
+          current_progress_percent: 40,
+          current_target_date: "2026-11-15",
+          target_closure_date: "2026-11-15",
+        } as any,
+      ],
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/audit/owners/5/tasks?name=Rahul%20Sharma"]}>
+        <Routes>
+          <Route path="/audit/owners/:ownerId/tasks" element={<ActionOwnerTasksPage mode="audit" />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText("ACT-00101");
+    const sendEmailBtn = screen.queryByRole("button", { name: /Send Email/i });
+    expect(sendEmailBtn).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
 
@@ -905,9 +910,173 @@ describe("Task Reviews & Reviewer Workflow Integration", () => {
   });
 });
 
+describe("Audit & Action Owner Summary Cards Scoping", () => {
+  let queryClient: QueryClient;
 
+  const mockMetrics: GovernanceMetrics = {
+    total_actions: 10,
+    open_count: 3,
+    wip_count: 4,
+    closed_count: 3,
+    overdue_count: 2,
+    avg_days_late: 5,
+    upcoming_count: 2,
+    due_in_3_days_count: 1,
+    pending_evidence_count: 1,
+    accepted_evidence_count: 2,
+    rework_evidence_count: 1,
+    reporting_week: "2026-W44",
+  } as unknown as GovernanceMetrics;
 
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    vi.spyOn(api, "get").mockResolvedValue({ data: {} });
+    vi.spyOn(governanceService, "getMetrics").mockResolvedValue(mockMetrics);
+    vi.spyOn(governanceService, "getActions").mockResolvedValue({
+      success: true,
+      count: 0,
+      total_pages: 1,
+      current_page: 1,
+      page_size: 25,
+      results: [],
+    });
+    vi.spyOn(governanceService, "getMetadata").mockResolvedValue({
+      circles: [],
+      categories: [],
+      statuses: [],
+      priorities: [],
+      functions: [],
+      available_weeks: [],
+    } as any);
+    vi.spyOn(governanceService, "getMyEvidence").mockResolvedValue({
+      results: [],
+      count: 0,
+      total_pages: 1,
+    } as any);
+    vi.spyOn(governanceService, "getRevisionRequests").mockResolvedValue({
+      results: [],
+      count: 0,
+      total_pages: 1,
+    } as any);
+    vi.spyOn(governanceService, "getHierarchyUsers").mockResolvedValue([] as any);
+  });
 
+  it("does NOT render the eight summary cards in Audit & Action Owner mode", async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/audit"]}>
+          <Routes>
+            <Route path="/audit" element={<GovernanceDashboardPage mode="audit" />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
 
+    expect(await screen.findByText("Audit & Action Owners")).toBeInTheDocument();
 
+    // Verify all 8 summary cards are completely absent from Audit & Action Owner
+    expect(screen.queryByText("Total Actions")).not.toBeInTheDocument();
+    expect(screen.queryByText("Due Soon")).not.toBeInTheDocument();
+    expect(screen.queryByText("Rework Needed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pending Review")).not.toBeInTheDocument();
+  });
 
+  it("DOES render the eight summary cards in Governance & Action Tracker mode", async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/governance"]}>
+          <Routes>
+            <Route path="/governance" element={<GovernanceDashboardPage mode="governance" />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByText("Governance & Action Tracker")).toBeInTheDocument();
+
+    // Verify summary cards are rendered in Governance & Action Tracker
+    expect((await screen.findAllByText("Total Actions")).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Due Soon")).toBeInTheDocument();
+    expect(screen.getByText("Rework Needed")).toBeInTheDocument();
+    expect(screen.getByText("Pending Review")).toBeInTheDocument();
+  });
+});
+
+describe("Audit & Action Owner Upload Proof Button Scoping", () => {
+  const sampleAction: GovernanceActionPoint = {
+    id: 101,
+    action_id: "ACT-00101",
+    circle: { id: 1, name: "Circle Delhi", code: "DEL", region: "North" },
+    function_area: "Operations",
+    action_point: "Perform critical compliance review",
+    key_deliverable: "Compliance report signed off",
+    owner: { id: 5, username: "rverma", full_name: "Rahul Verma", email: "rahul@mapar.com", role: "Auditee" },
+    owner_name_override: "Rahul Verma",
+    raised_date: "2026-10-01",
+    target_closure_date: "2026-10-25",
+    current_target_date: "2026-10-25",
+    status: "Open",
+    priority: "High",
+    evidence_required: true,
+    evidence_status: "Pending Review",
+    revision_count: 0,
+    ageing_days: 3,
+    ageing_bucket: "0-7 Days",
+    weeks_in_review: 1,
+    last_update: "Test update",
+    is_escalated: false,
+    is_overdue: true,
+    created_at: "2026-10-01T10:00:00Z",
+    updated_at: "2026-10-05T10:00:00Z",
+  };
+
+  it("does NOT render Upload Proof button in GovernanceDetailDrawer in Audit & Action Owner mode", async () => {
+    vi.spyOn(governanceService, "getWeeklyUpdates").mockResolvedValue({
+      success: true,
+      weekly_updates: [],
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/audit"]}>
+        <GovernanceDetailDrawer
+          open={true}
+          action={sampleAction}
+          onClose={vi.fn()}
+          onReviseTarget={vi.fn()}
+          onUploadEvidence={vi.fn()}
+          onReviewEvidence={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("Perform critical compliance review")).toBeInTheDocument();
+    // Verify Upload Proof button is completely absent in Audit & Action Owner mode
+    expect(screen.queryByRole("button", { name: /Upload Proof/i })).not.toBeInTheDocument();
+  });
+
+  it("DOES render Upload Proof button in GovernanceDetailDrawer in Governance & Action Tracker mode", async () => {
+    vi.spyOn(governanceService, "getWeeklyUpdates").mockResolvedValue({
+      success: true,
+      weekly_updates: [],
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/governance"]}>
+        <GovernanceDetailDrawer
+          open={true}
+          action={sampleAction}
+          onClose={vi.fn()}
+          onReviseTarget={vi.fn()}
+          onUploadEvidence={vi.fn()}
+          onReviewEvidence={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("Perform critical compliance review")).toBeInTheDocument();
+    // Verify Upload Proof button is present in Governance & Action Tracker mode
+    expect(screen.getAllByRole("button", { name: /Upload Proof/i }).length).toBeGreaterThan(0);
+  });
+});

@@ -25,8 +25,8 @@ export const GOVERNANCE_KEYS = {
   list: (params: GovernanceFilterParams) => ["governance", "list", params] as const,
   detail: (id: number) => ["governance", "detail", id] as const,
   fullDetail: (id: number) => ["governance", "fullDetail", id] as const,
-  metrics: (circleId?: number | null, reportingWeek?: string | null) =>
-    ["governance", "metrics", circleId ?? "all", reportingWeek ?? "current"] as const,
+  metrics: (circleId?: number | null, reportingWeek?: string | null, mode?: "governance" | "audit" | "documents") =>
+    ["governance", "metrics", circleId ?? "all", reportingWeek ?? "current", mode ?? "governance"] as const,
   metadata: () => ["governance", "metadata"] as const,
   revisions: (id: number) => ["governance", "revisions", id] as const,
   weeklyUpdates: (actionId: number) => ["governance", "weeklyUpdates", actionId] as const,
@@ -76,10 +76,10 @@ export function useHierarchyUsers(level?: string, nodeId?: number | null) {
   });
 }
 
-export function useGovernanceMetrics(circleId?: number | null, reportingWeek?: string | null) {
+export function useGovernanceMetrics(circleId?: number | null, reportingWeek?: string | null, mode?: "governance" | "audit" | "documents") {
   return useQuery({
-    queryKey: GOVERNANCE_KEYS.metrics(circleId, reportingWeek),
-    queryFn: () => governanceService.getMetrics(circleId, reportingWeek),
+    queryKey: GOVERNANCE_KEYS.metrics(circleId, reportingWeek, mode),
+    queryFn: () => governanceService.getMetrics(circleId, reportingWeek, mode),
   });
 }
 

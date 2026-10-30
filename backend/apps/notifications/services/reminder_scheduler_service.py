@@ -14,14 +14,9 @@ logger = logging.getLogger("mapar.notifications")
 
 IST_TZ = ZoneInfo("Asia/Kolkata")
 
-# Exact recurring reminder schedule specification:
-# Day: Friday (1 send), Saturday (2 sends), Sunday (3 sends)
-# Permitted window: 08:00 to 20:00 IST
-SCHEDULE_SLOTS = {
-    "Friday": ["10:00"],
-    "Saturday": ["09:00", "17:00"],
-    "Sunday": ["09:00", "13:00", "17:00"],
-}
+# Fallback recurring reminder schedule specification:
+DEFAULT_SCHEDULE_SLOTS = EmailConfiguration.DEFAULT_REMINDER_SCHEDULE
+SCHEDULE_SLOTS = DEFAULT_SCHEDULE_SLOTS
 
 
 class ReminderSchedulerService:
@@ -46,6 +41,42 @@ class ReminderSchedulerService:
         return start <= current.time() <= end
 
     @classmethod
+    def get_configured_schedule(cls) -> Dict[str, List[str]]:
+        """Dynamically retrieves the configured weekly reminder schedule from EmailConfiguration."""
+        try:
+            config = EmailConfiguration.get_solo()
+            return config.get_reminder_schedule()
+        except Exception as exc:
+            logger.warning("Failed to fetch dynamic reminder schedule, falling back to default: %s", exc)
+            return EmailConfiguration.DEFAULT_REMINDER_SCHEDULE
+
+    @classmethod
+    def get_all_slot_labels(cls) -> List[str]:
+        """Returns all currently configured slots as Day:HH:MM labels (e.g. ['Friday:10:00', ...])."""
+        schedule = cls.get_configured_schedule()
+        slots = []
+        for day, times in schedule.items():
+            if isinstance(times, list):
+                for t in times:
+                    slots.append(f"{day}:{t}")
+        return slots
+
+    @classmethod
+    def update_weekly_schedule(cls, schedule_data: Dict[str, List[str]]) -> Dict[str, List[str]]:
+        """
+        Persists the updated weekly reminder schedule to EmailConfiguration singleton.
+        Ensures persistence across server restarts and eliminates outdated scheduled slots.
+        """
+        from django.db import transaction
+        with transaction.atomic():
+            config = EmailConfiguration.get_solo()
+            config.reminder_schedule = schedule_data
+            config.save(update_fields=["reminder_schedule", "updated_at"])
+            logger.info("Successfully saved updated weekly reminder schedule: %s", schedule_data)
+            return config.get_reminder_schedule()
+
+
+    @classmethod
     def resolve_matching_slot(
         cls,
         dt: Optional[datetime] = None,
@@ -58,16 +89,20 @@ class ReminderSchedulerService:
         current = dt or cls.get_current_ist_time()
         day_name = current.strftime("%A")
 
-        if day_name not in SCHEDULE_SLOTS:
+        schedule = cls.get_configured_schedule()
+        if day_name not in schedule:
             return None
 
-        configured_times = SCHEDULE_SLOTS[day_name]
+        configured_times = schedule.get(day_name, [])
         for slot_time_str in configured_times:
-            hour, minute = map(int, slot_time_str.split(":"))
-            slot_time = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            diff_seconds = abs((current - slot_time).total_seconds())
-            if diff_seconds <= (tolerance_minutes * 60):
-                return f"{day_name}:{slot_time_str}"
+            try:
+                hour, minute = map(int, slot_time_str.split(":"))
+                slot_time = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                diff_seconds = abs((current - slot_time).total_seconds())
+                if diff_seconds <= (tolerance_minutes * 60):
+                    return f"{day_name}:{slot_time_str}"
+            except Exception:
+                continue
 
         return None
 
@@ -115,6 +150,13 @@ class ReminderSchedulerService:
 
             if not active_slot:
                 msg = f"Current day ({current_ist.strftime('%A %H:%M IST')}) does not match any scheduled reminder slot."
+                logger.info(msg)
+                return {"success": False, "reason": msg, "total_processed": 0}
+
+            # Enforce that active_slot is currently configured in the active weekly schedule
+            all_slots = cls.get_all_slot_labels()
+            if active_slot not in all_slots:
+                msg = f"Slot '{active_slot}' is no longer active in the configured reminder schedule."
                 logger.info(msg)
                 return {"success": False, "reason": msg, "total_processed": 0}
 

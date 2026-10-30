@@ -14,6 +14,14 @@ logger = logging.getLogger(__name__)
 
 
 class StatusMatrixEmailService:
+    @classmethod
+    def _is_audit_user(cls, user: User) -> bool:
+        if not user or not user.is_authenticated:
+            return True
+        if getattr(user, "role", None) == User.Role.ACTION_OWNER:
+            return True
+        return False
+
     """
     Service responsible for dispatching consolidated governance notification emails
     to action owners identified from the Action Status Matrix.

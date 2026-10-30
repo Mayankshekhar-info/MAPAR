@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import Drawer from "@mui/material/Drawer";
 import Box from "@mui/material/Box";
@@ -17,13 +17,11 @@ import DownloadOutlinedIcon from "@mui/icons-material/DownloadOutlined";
 import RateReviewOutlinedIcon from "@mui/icons-material/RateReviewOutlined";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
 import EventRepeatIcon from "@mui/icons-material/EventRepeat";
-import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
 
 import { colorTokens, radiusTokens } from "../../../app/theme/tokens";
 import { GovernanceActionPoint, GovernanceEvidenceItem, GovernanceWeeklyUpdate } from "../types/governance.types";
 import { governanceService } from "../api/governanceService";
 import { WeeklyProgressTimeline } from "./WeeklyProgressTimeline";
-import { SendTaskEmailModal } from "./SendTaskEmailModal";
 
 interface GovernanceDetailDrawerProps {
   open: boolean;
@@ -45,8 +43,10 @@ export const GovernanceDetailDrawer: React.FC<GovernanceDetailDrawerProps> = ({
   onReviewEvidence,
 }) => {
   const location = useLocation();
+  const isAuditMode = useMemo(() => {
+    return location.pathname.startsWith("/audit");
+  }, [location.pathname]);
   const [weeklyUpdates, setWeeklyUpdates] = useState<GovernanceWeeklyUpdate[]>([]);
-  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
   useEffect(() => {
     if (open && action?.id) {
@@ -514,19 +514,21 @@ export const GovernanceDetailDrawer: React.FC<GovernanceDetailDrawerProps> = ({
                 Evidence Submissions & Proof ({action.evidence_items?.length || 0})
               </Typography>
             </Box>
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<CloudUploadOutlinedIcon />}
-              onClick={() => onUploadEvidence(action)}
-              sx={{
-                fontSize: "0.75rem",
-                backgroundColor: colorTokens.primary.main,
-                "&:hover": { backgroundColor: colorTokens.primary.dark },
-              }}
-            >
-              Upload Proof
-            </Button>
+            {!isAuditMode && (
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<CloudUploadOutlinedIcon />}
+                onClick={() => onUploadEvidence(action)}
+                sx={{
+                  fontSize: "0.75rem",
+                  backgroundColor: colorTokens.primary.main,
+                  "&:hover": { backgroundColor: colorTokens.primary.dark },
+                }}
+              >
+                Upload Proof
+              </Button>
+            )}
           </Box>
 
           {!action.evidence_items || action.evidence_items.length === 0 ? (
@@ -706,28 +708,16 @@ export const GovernanceDetailDrawer: React.FC<GovernanceDetailDrawerProps> = ({
           gap: 1.5,
         }}
       >
-        <Button
-          variant="outlined"
-          startIcon={<CloudUploadOutlinedIcon />}
-          onClick={() => onUploadEvidence(action)}
-          sx={{ flex: 1, minWidth: 120 }}
-        >
-          Upload Proof
-        </Button>
-        <Button
-          variant="outlined"
-          startIcon={<EmailOutlinedIcon />}
-          onClick={() => setIsEmailModalOpen(true)}
-          sx={{
-            flex: 1,
-            minWidth: 120,
-            borderColor: colorTokens.primary.main,
-            color: colorTokens.primary.main,
-            "&:hover": { backgroundColor: "#F0F9FF" },
-          }}
-        >
-          Send Email
-        </Button>
+        {!isAuditMode && (
+          <Button
+            variant="outlined"
+            startIcon={<CloudUploadOutlinedIcon />}
+            onClick={() => onUploadEvidence(action)}
+            sx={{ flex: 1, minWidth: 120 }}
+          >
+            Upload Proof
+          </Button>
+        )}
         <Button
           variant="contained"
           startIcon={<UpdateOutlinedIcon />}
@@ -743,12 +733,6 @@ export const GovernanceDetailDrawer: React.FC<GovernanceDetailDrawerProps> = ({
         </Button>
       </Box>
 
-      {/* Manual Task Email Alert Modal */}
-      <SendTaskEmailModal
-        open={isEmailModalOpen}
-        onClose={() => setIsEmailModalOpen(false)}
-        task={action}
-      />
     </Drawer>
   );
 };

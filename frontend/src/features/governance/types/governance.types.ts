@@ -341,6 +341,7 @@ export interface GovernanceMetadata {
 }
 
 export interface GovernanceFilterParams {
+  mode?: "governance" | "audit" | "documents";
   search?: string;
   circle_id?: number | null;
   owner_id?: number | null;

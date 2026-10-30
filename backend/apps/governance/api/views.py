@@ -92,7 +92,9 @@ class GovernanceActionPointListView(APIView):
             "end_date": request.query_params.get("end_date"),
             "hierarchy_level": request.query_params.get("hierarchy_level"),
             "hierarchy_node_id": request.query_params.get("hierarchy_node_id"),
+            "owner_name": request.query_params.get("owner_name"),
             "ordering": request.query_params.get("ordering", "-raised_date"),
+            "mode": request.query_params.get("mode"),
         }
 
         qs = get_governance_actions(filters, request.user)
@@ -594,8 +596,9 @@ class GovernanceMetricsView(APIView):
         circle_id_param = request.query_params.get("circle_id")
         circle_id = int(circle_id_param) if circle_id_param and circle_id_param.isdigit() else None
         reporting_week = request.query_params.get("reporting_week")
+        mode = request.query_params.get("mode")
         metrics = get_governance_summary_metrics(
-            request.user, circle_id=circle_id, reporting_week=reporting_week
+            request.user, circle_id=circle_id, reporting_week=reporting_week, mode=mode
         )
         return Response({"success": True, "metrics": metrics})
 
@@ -709,7 +712,8 @@ class GovernanceActionPointFullDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-        detail_data = get_task_full_detail(pk, request.user)
+        mode = request.query_params.get("mode")
+        detail_data = get_task_full_detail(pk, request.user, mode=mode)
         if not detail_data:
             return Response(
                 {"success": False, "error": f"Task #{pk} not found or outside authorized scope."},
@@ -762,16 +766,17 @@ class GovernanceWeeklyUpdateListView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    def _get_action(self, action_id, user):
-        qs = apply_governance_scope(GovernanceActionPoint.objects.all(), user)
+    def _get_action(self, action_id, user, mode=None):
+        qs = apply_governance_scope(GovernanceActionPoint.objects.all(), user, mode=mode)
         action = qs.filter(id=action_id).first()
         if not action:
             raise PermissionDenied("Action point not found or outside authorized scope.")
         return action
 
     def get(self, request, pk):
-        action = self._get_action(pk, request.user)
-        updates = get_task_weekly_updates(action.id, request.user)
+        mode = request.query_params.get("mode")
+        action = self._get_action(pk, request.user, mode=mode)
+        updates = get_task_weekly_updates(action.id, request.user, mode=mode)
         serializer = GovernanceWeeklyUpdateSerializer(updates, many=True)
         return Response({"success": True, "weekly_updates": serializer.data})
 
@@ -996,15 +1001,51 @@ class GovernanceWeeklyErrorReportExportView(APIView):
         return response
 
 
+def check_audit_email_restriction(user, request=None):
+    """
+    Blocks email dispatch or preview if:
+    1. The request originates from or targets the Audit & Action Tracker module (mode == "audit").
+    2. The requesting user is an Action Owner (Audit & Action Tracker auditee).
+    Returns (is_restricted: bool, error_response: Response or None)
+    """
+    if not user or not user.is_authenticated:
+        return True, Response(
+            {"success": False, "message": "Authentication required."},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    if request:
+        mode = request.query_params.get("mode") or (
+            request.data.get("mode") if hasattr(request, "data") and isinstance(request.data, dict) else None
+        )
+        if mode == "audit":
+            return True, Response(
+                {"success": False, "message": "Email sending has been disabled for all Audit & Action Tracker users."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+    if getattr(user, "role", None) == User.Role.ACTION_OWNER:
+        return True, Response(
+            {"success": False, "message": "Email sending has been disabled for all Audit & Action Tracker users."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    return False, None
+
+
 class GovernanceActionSendEmailView(APIView):
     """
     POST /api/v1/governance/actions/<id>/send-email/
     Triggers an on-demand urgent follow-up alert email to the task owner or any selected application user.
-    Enforces organization-scoped authorization, recipient resolution, and audit logging.
+    Email sending is blocked for all users with Audit & Action Tracker access.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
+        is_restricted, err_resp = check_audit_email_restriction(request.user, request)
+        if is_restricted:
+            return err_resp
+
         qs = apply_governance_scope(GovernanceActionPoint.objects.all(), request.user)
         action = qs.filter(id=pk).first()
         if not action:
@@ -1057,6 +1098,10 @@ class GovernanceStatusMatrixEmailPreviewView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        is_restricted, err_resp = check_audit_email_restriction(request.user, request)
+        if is_restricted:
+            return err_resp
+
         from apps.notifications.services.status_matrix_email_service import StatusMatrixEmailService
 
         reporting_week = request.query_params.get("reporting_week")
@@ -1075,11 +1120,14 @@ class GovernanceStatusMatrixSendEmailView(APIView):
     """
     POST /api/v1/governance/status-matrix/send-emails/
     Dispatches 1 consolidated email per eligible Action Owner containing all their assigned tasks.
-    Enforces authorization, deduplication, and full audit logging.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        is_restricted, err_resp = check_audit_email_restriction(request.user, request)
+        if is_restricted:
+            return err_resp
+
         if getattr(request.user, "role", None) == User.Role.VIEWER:
             return Response(
                 {"success": False, "message": "Viewers do not have permission to trigger bulk status matrix emails."},
@@ -1119,6 +1167,10 @@ class GovernanceOwnerEmailPreviewView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, owner_id):
+        is_restricted, err_resp = check_audit_email_restriction(request.user, request)
+        if is_restricted:
+            return err_resp
+
         from apps.notifications.services.status_matrix_email_service import StatusMatrixEmailService
 
         owner_name = request.query_params.get("name")
@@ -1138,6 +1190,10 @@ class GovernanceOwnerSendEmailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, owner_id):
+        is_restricted, err_resp = check_audit_email_restriction(request.user, request)
+        if is_restricted:
+            return err_resp
+
         if getattr(request.user, "role", None) == User.Role.VIEWER:
             return Response(
                 {"success": False, "message": "Viewers do not have permission to trigger action owner emails."},

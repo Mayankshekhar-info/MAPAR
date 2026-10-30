@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { notificationsService } from "../api/notificationsService";
 import {
   UpdateSMTPConfigurationPayload,
+  UpdateWeeklySchedulePayload,
 } from "../types/notifications.types";
 
 export const NOTIFICATION_KEYS = {
@@ -49,6 +50,17 @@ export function useScheduleOverview() {
     queryKey: NOTIFICATION_KEYS.schedule,
     queryFn: notificationsService.getScheduleOverview,
     refetchInterval: 60000, // Refresh status every minute
+  });
+}
+
+export function useUpdateWeeklySchedule() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: UpdateWeeklySchedulePayload) =>
+      notificationsService.updateWeeklySchedule(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.schedule });
+    },
   });
 }
 

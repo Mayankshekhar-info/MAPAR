@@ -23,6 +23,7 @@ interface GovernanceOwnerDashboardCardProps {
   onQuickFilter: (filter: {
     status?: string;
     is_overdue?: boolean;
+    is_due_soon?: boolean;
     view_mode?: string;
   }) => void;
 }
@@ -245,7 +246,7 @@ export const GovernanceOwnerDashboardCard: React.FC<GovernanceOwnerDashboardCard
         {/* Approaching Deadline (Next 7 Days) */}
         <Grid size={{ xs: 6, sm: 4, md: 2 }}>
           <ButtonBase
-            onClick={() => onQuickFilter({ view_mode: "my_tasks" })}
+            onClick={() => onQuickFilter({ is_due_soon: true, view_mode: "my_tasks" })}
             sx={{
               width: "100%",
               p: 1.5,

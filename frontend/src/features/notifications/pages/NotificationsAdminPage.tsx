@@ -19,6 +19,7 @@ import {
   useScheduleOverview,
   useDeliveryLogs,
   useTriggerReminders,
+  useUpdateWeeklySchedule,
 } from "../hooks/useNotifications";
 import { SMTPConfigCard } from "../components/SMTPConfigCard";
 import { ScheduleStatusCard } from "../components/ScheduleStatusCard";
@@ -54,6 +55,7 @@ export const NotificationsAdminPage: React.FC = () => {
   const testConnectionMutation = useTestConnection();
   const sendTestEmailMutation = useSendTestEmail();
   const triggerRemindersMutation = useTriggerReminders();
+  const updateScheduleMutation = useUpdateWeeklySchedule();
 
   return (
     <Box sx={{ p: { xs: 2, sm: 3, md: 4 }, maxWidth: 1400, margin: "0 auto" }}>
@@ -112,6 +114,7 @@ export const NotificationsAdminPage: React.FC = () => {
           isLoading={loadingSchedule}
           onTriggerNow={params => triggerRemindersMutation.mutateAsync(params)}
           isTriggering={triggerRemindersMutation.isPending}
+          onUpdateSchedule={schedule => updateScheduleMutation.mutateAsync({ schedule })}
         />
       )}
 

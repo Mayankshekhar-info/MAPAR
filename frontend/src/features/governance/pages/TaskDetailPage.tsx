@@ -54,7 +54,6 @@ import { GovernanceRevisionModal } from "../components/GovernanceRevisionModal";
 import { RequestTargetRevisionModal } from "../components/RequestTargetRevisionModal";
 import { ReviewRevisionRequestDialog } from "../components/ReviewRevisionRequestDialog";
 import { MandatoryEvidenceClosureModal } from "../components/MandatoryEvidenceClosureModal";
-import { SendTaskEmailModal } from "../components/SendTaskEmailModal";
 import { AssignTaskReviewModal } from "../components/AssignTaskReviewModal";
 import { SubmitTaskReviewModal } from "../components/SubmitTaskReviewModal";
 import { SubmitForVerificationModal } from "../components/SubmitForVerificationModal";
@@ -106,7 +105,6 @@ export const TaskDetailPage: React.FC = () => {
   const [isEvidenceReviewOpen, setIsEvidenceReviewOpen] = useState(false);
   const [isMandatoryEvidenceModalOpen, setIsMandatoryEvidenceModalOpen] = useState(false);
   const [selectedEvidenceForReview, setSelectedEvidenceForReview] = useState<GovernanceEvidenceItem | null>(null);
-  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isAssignReviewOpen, setIsAssignReviewOpen] = useState(false);
   const [isSubmitReviewOpen, setIsSubmitReviewOpen] = useState(false);
   const [selectedReviewForSubmit, setSelectedReviewForSubmit] = useState<GovernanceTaskReview | null>(null);
@@ -541,35 +539,22 @@ export const TaskDetailPage: React.FC = () => {
             >
               Log Weekly Update
             </Button>
-            <Button
-              variant="outlined"
-              startIcon={<UploadFileIcon />}
-              onClick={() => setIsEvidenceUploadOpen(true)}
-              sx={{
-                color: colorTokens.text.primary,
-                borderColor: colorTokens.workspace.border,
-                borderRadius: radiusTokens.sm,
-                fontWeight: 600,
-                textTransform: "none",
-              }}
-            >
-              Upload Proof
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<EmailOutlinedIcon />}
-              onClick={() => setIsEmailModalOpen(true)}
-              sx={{
-                color: colorTokens.primary.main,
-                borderColor: colorTokens.workspace.border,
-                borderRadius: radiusTokens.sm,
-                fontWeight: 600,
-                textTransform: "none",
-                "&:hover": { borderColor: colorTokens.primary.main, backgroundColor: "#F0F9FF" },
-              }}
-            >
-              Send Email
-            </Button>
+            {!isAuditMode && (
+              <Button
+                variant="outlined"
+                startIcon={<UploadFileIcon />}
+                onClick={() => setIsEvidenceUploadOpen(true)}
+                sx={{
+                  color: colorTokens.text.primary,
+                  borderColor: colorTokens.workspace.border,
+                  borderRadius: radiusTokens.sm,
+                  fontWeight: 600,
+                  textTransform: "none",
+                }}
+              >
+                Upload Proof
+              </Button>
+            )}
             {!isAuditMode && can_assign_review && (
               <Button
                 variant="outlined"
@@ -853,26 +838,28 @@ export const TaskDetailPage: React.FC = () => {
                   />
                 </Box>
               </Box>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<UploadFileIcon />}
-                onClick={() => setIsEvidenceUploadOpen(true)}
-                sx={{
-                  borderColor: colorTokens.primary.light,
-                  color: colorTokens.primary.main,
-                  fontWeight: 600,
-                  textTransform: "none",
-                  borderRadius: radiusTokens.sm,
-                  backgroundColor: "#FFFFFF",
-                  "&:hover": {
-                    borderColor: colorTokens.primary.main,
-                    backgroundColor: colorTokens.primary.lighter,
-                  },
-                }}
-              >
-                Upload Proof
-              </Button>
+              {!isAuditMode && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<UploadFileIcon />}
+                  onClick={() => setIsEvidenceUploadOpen(true)}
+                  sx={{
+                    borderColor: colorTokens.primary.light,
+                    color: colorTokens.primary.main,
+                    fontWeight: 600,
+                    textTransform: "none",
+                    borderRadius: radiusTokens.sm,
+                    backgroundColor: "#FFFFFF",
+                    "&:hover": {
+                      borderColor: colorTokens.primary.main,
+                      backgroundColor: colorTokens.primary.lighter,
+                    },
+                  }}
+                >
+                  Upload Proof
+                </Button>
+              )}
             </Box>
 
             {evidence_items.length === 0 ? (
@@ -1528,13 +1515,7 @@ export const TaskDetailPage: React.FC = () => {
         }}
       />
 
-      <SendTaskEmailModal
-        open={isEmailModalOpen}
-        onClose={() => setIsEmailModalOpen(false)}
-        task={action}
-        onSuccess={(msg) => setNotification({ message: msg, severity: "success" })}
-        onError={(msg) => setNotification({ message: msg, severity: "error" })}
-      />
+
 
       <AssignTaskReviewModal
         open={isAssignReviewOpen}

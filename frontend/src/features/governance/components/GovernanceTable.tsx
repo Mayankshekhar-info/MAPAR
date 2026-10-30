@@ -1044,15 +1044,17 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
                             </IconButton>
                           </Tooltip>
                         )}
-                        <Tooltip title="Upload Proof / Evidence" arrow>
-                          <IconButton
-                            size="small"
-                            onClick={() => onUploadEvidence(row)}
-                            sx={{ color: colorTokens.primary.main }}
-                          >
-                            <CloudUploadOutlinedIcon sx={{ fontSize: 18 }} />
-                          </IconButton>
-                        </Tooltip>
+                        {!location.pathname.startsWith("/audit") && (
+                          <Tooltip title="Upload Proof / Evidence" arrow>
+                            <IconButton
+                              size="small"
+                              onClick={() => onUploadEvidence(row)}
+                              sx={{ color: colorTokens.primary.main }}
+                            >
+                              <CloudUploadOutlinedIcon sx={{ fontSize: 18 }} />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         <Tooltip
                           title={
                             location.pathname.startsWith("/audit")
