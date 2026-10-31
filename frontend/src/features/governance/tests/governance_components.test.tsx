@@ -1033,10 +1033,7 @@ describe("Audit & Action Owner Upload Proof Button Scoping", () => {
   };
 
   it("does NOT render Upload Proof button in GovernanceDetailDrawer in Audit & Action Owner mode", async () => {
-    vi.spyOn(governanceService, "getWeeklyUpdates").mockResolvedValue({
-      success: true,
-      weekly_updates: [],
-    });
+    vi.spyOn(governanceService, "getWeeklyUpdates").mockResolvedValue([]);
 
     render(
       <MemoryRouter initialEntries={["/audit"]}>
@@ -1057,10 +1054,7 @@ describe("Audit & Action Owner Upload Proof Button Scoping", () => {
   });
 
   it("DOES render Upload Proof button in GovernanceDetailDrawer in Governance & Action Tracker mode", async () => {
-    vi.spyOn(governanceService, "getWeeklyUpdates").mockResolvedValue({
-      success: true,
-      weekly_updates: [],
-    });
+    vi.spyOn(governanceService, "getWeeklyUpdates").mockResolvedValue([]);
 
     render(
       <MemoryRouter initialEntries={["/governance"]}>

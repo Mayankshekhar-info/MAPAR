@@ -15,7 +15,6 @@ htmlcov/
 
 # Django
 db.sqlite3
-media/
 staticfiles/
 
 # Node
