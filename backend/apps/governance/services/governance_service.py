@@ -189,6 +189,55 @@ class GovernanceService:
         return False
 
     @classmethod
+    def can_delete_task(cls, action_point: GovernanceActionPoint, user: User, mode: Optional[str] = None) -> bool:
+        """
+        Determines whether the user is authorized to delete the action point.
+        Task deletion is EXCLUSIVELY permitted within Governance and Action Tracker.
+        Strictly forbidden:
+        - Any request from Audit and Action Owner (mode == 'audit')
+        - Users with role ACTION_OWNER or VIEWER
+        - Action owners even if assigned to the task (unless they have management/creator rights)
+        Authorized:
+        - Superusers and Super Admins
+        - Management and Corporate Domain Leads
+        - Task Creator or Assigner
+        - Circle Domain Managers and Circle Data Entry users within the action point's Circle
+        - Dynamic permission check: user has 'governance.delete' or 'governance.delete_governanceactionpoint'
+        """
+        if not user or not user.is_authenticated:
+            return False
+        if mode == "audit":
+            return False
+        if getattr(user, "role", None) in [User.Role.ACTION_OWNER, User.Role.VIEWER]:
+            return False
+        if user.is_superuser or getattr(user, "is_superadmin", False):
+            return True
+        if user.role in [User.Role.SUPER_ADMIN, User.Role.MANAGEMENT, User.Role.CORPORATE_DOMAIN_LEAD]:
+            return True
+        if action_point.created_by_id == user.id or action_point.assigned_by_id == user.id:
+            return True
+        user_circle_id = getattr(user, "circle_id", None) or (user.circle.id if getattr(user, "circle", None) else None)
+        if user.role in [User.Role.CIRCLE_DOMAIN_MANAGER, User.Role.CIRCLE_DATA_ENTRY] and user_circle_id == action_point.circle_id:
+            return True
+        if hasattr(user, "has_perm") and (user.has_perm("governance.delete") or user.has_perm("governance.delete_governanceactionpoint")):
+            return True
+        return False
+
+    @classmethod
+    def delete_action_point(cls, action_point: GovernanceActionPoint, user: User, mode: Optional[str] = None) -> None:
+        """
+        Deletes an action point within Governance and Action Tracker.
+        Ensures strict audit mode prohibition, manager authorization, and atomic cascade.
+        """
+        if mode == "audit":
+            raise PermissionDenied("Task deletion is strictly prohibited in Audit & Action Owner.")
+        if not cls.can_delete_task(action_point, user, mode=mode):
+            raise PermissionDenied("You do not have permission to delete this action point.")
+
+        with transaction.atomic():
+            action_point.delete()
+
+    @classmethod
     def update_action_point(cls, action_point: GovernanceActionPoint, data: Dict[str, Any], user: User) -> GovernanceActionPoint:
         """
         Updates an existing action point within Governance & Action Tracker.

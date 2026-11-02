@@ -28,6 +28,7 @@ import RateReviewIcon from "@mui/icons-material/RateReview";
 import SendIcon from "@mui/icons-material/Send";
 import VerifiedIcon from "@mui/icons-material/Verified";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import dayjs from "dayjs";
 
 
@@ -42,12 +43,14 @@ import {
   useUpdateGovernanceAction,
   useSubmitTargetRevisionRequest,
   useReviewTargetRevisionRequest,
+  useDeleteGovernanceAction,
 } from "../hooks/useGovernance";
 import { useAuth } from "../../auth";
 import { governanceService } from "../api/governanceService";
 import { ProgressTrendChart } from "../components/ProgressTrendChart";
 import { WeeklyProgressTimeline } from "../components/WeeklyProgressTimeline";
 import { GovernanceWeeklyUpdateModal } from "../components/GovernanceWeeklyUpdateModal";
+import { DeleteTaskConfirmModal } from "../components/DeleteTaskConfirmModal";
 import { GovernanceEvidenceUploadModal } from "../components/GovernanceEvidenceUploadModal";
 import { GovernanceEvidenceReviewModal } from "../components/GovernanceEvidenceReviewModal";
 import { GovernanceRevisionModal } from "../components/GovernanceRevisionModal";
@@ -96,6 +99,28 @@ export const TaskDetailPage: React.FC = () => {
 
   // Modals
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const deleteActionMutation = useDeleteGovernanceAction();
+
+  const handleConfirmDeleteTask = async () => {
+    if (!action) return;
+    try {
+      await deleteActionMutation.mutateAsync(action.id);
+      setIsDeleteDialogOpen(false);
+      navigate("/governance");
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.errors ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to delete task.";
+      setNotification({
+        message: typeof msg === "string" ? msg : JSON.stringify(msg),
+        severity: "error",
+      });
+      setIsDeleteDialogOpen(false);
+    }
+  };
   const [isWeeklyModalOpen, setIsWeeklyModalOpen] = useState(false);
   const [isEvidenceUploadOpen, setIsEvidenceUploadOpen] = useState(false);
   const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false);
@@ -167,6 +192,7 @@ export const TaskDetailPage: React.FC = () => {
     can_review_evidence = false,
     has_pending_revision = false,
     can_edit_task = false,
+    can_delete_task = false,
   } = data;
 
   const handleEditTaskSubmit = async (payload: CreateActionPayload | UpdateActionPayload) => {
@@ -426,6 +452,30 @@ export const TaskDetailPage: React.FC = () => {
                 }}
               >
                 Edit Task
+              </Button>
+            )}
+
+            {/* Delete Task: Governance & Action Tracker Only */}
+            {!isAuditMode && !isDocsMode && can_delete_task && (
+              <Button
+                variant="outlined"
+                color="error"
+                startIcon={<DeleteOutlineIcon />}
+                onClick={() => setIsDeleteDialogOpen(true)}
+                disabled={deleteActionMutation.isPending}
+                sx={{
+                  color: colorTokens.status.error.main,
+                  borderColor: colorTokens.status.error.main,
+                  borderRadius: radiusTokens.sm,
+                  fontWeight: 600,
+                  textTransform: "none",
+                  "&:hover": {
+                    borderColor: colorTokens.status.error.text,
+                    backgroundColor: "#FEF2F2",
+                  },
+                }}
+              >
+                Delete Task
               </Button>
             )}
 
@@ -1600,6 +1650,18 @@ export const TaskDetailPage: React.FC = () => {
           isLoading={updateActionMutation.isPending}
           onClose={() => setIsEditModalOpen(false)}
           onSubmit={handleEditTaskSubmit}
+        />
+      )}
+
+      {/* Delete Task Modal: Governance Module Only */}
+      {isDeleteDialogOpen && action && (
+        <DeleteTaskConfirmModal
+          open={isDeleteDialogOpen}
+          taskIdentifier={action.action_id}
+          taskTitle={action.action_point}
+          isLoading={deleteActionMutation.isPending}
+          onClose={() => setIsDeleteDialogOpen(false)}
+          onConfirm={handleConfirmDeleteTask}
         />
       )}
     </Box>

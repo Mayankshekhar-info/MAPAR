@@ -1116,6 +1116,7 @@ def get_task_full_detail(action_point_id: int, user: User, mode: Optional[str] =
     can_request_revision = GovernanceService.can_request_target_revision(action, user)
     can_review_evidence = GovernanceEvidenceService.can_review_evidence(action, user)
     can_edit_task = GovernanceService.can_edit_task(action, user)
+    can_delete_task = GovernanceService.can_delete_task(action, user, mode=mode)
     has_pending_revision = any(r.status == GovernanceTargetRevisionRequest.Status.PENDING for r in revision_requests)
 
     return {
@@ -1129,6 +1130,7 @@ def get_task_full_detail(action_point_id: int, user: User, mode: Optional[str] =
         "task_reviews": task_reviews,
         "active_review": active_review,
         "can_edit_task": can_edit_task,
+        "can_delete_task": can_delete_task,
         "can_assign_review": can_assign_review,
         "can_submit_for_verification": can_submit_for_verification,
         "can_verify_review": can_verify_review,

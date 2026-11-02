@@ -36,6 +36,7 @@ import {
   useRevisionRequests,
   useSubmitTargetRevisionRequest,
   useReviewTargetRevisionRequest,
+  useDeleteGovernanceAction,
 } from "../hooks/useGovernance";
 import { useAuth } from "../../auth";
 import { governanceService } from "../api/governanceService";
@@ -72,6 +73,7 @@ import { GovernanceEvidenceUploadModal } from "../components/GovernanceEvidenceU
 import { GovernanceEvidenceReviewModal } from "../components/GovernanceEvidenceReviewModal";
 import { GovernanceOwnerDashboardCard } from "../components/GovernanceOwnerDashboardCard";
 import { MandatoryEvidenceClosureModal } from "../components/MandatoryEvidenceClosureModal";
+import { DeleteTaskConfirmModal } from "../components/DeleteTaskConfirmModal";
 
 interface GovernanceDashboardPageProps {
   mode?: "governance" | "audit" | "documents";
@@ -134,6 +136,7 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState<boolean>(false);
   const [isRequestRevisionOpen, setIsRequestRevisionOpen] = useState<boolean>(false);
   const [actionForRevisionRequest, setActionForRevisionRequest] = useState<GovernanceActionPoint | null>(null);
+  const [actionToDelete, setActionToDelete] = useState<GovernanceActionPoint | null>(null);
 
   // Queries
   const { data: actionsData, isLoading: isLoadingActions, refetch: refetchActions } = useGovernanceList(filters);
@@ -167,6 +170,7 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
   // Mutations
   const createActionMutation = useCreateGovernanceAction();
   const updateActionMutation = useUpdateGovernanceAction();
+  const deleteActionMutation = useDeleteGovernanceAction();
   const reviseTargetMutation = useReviseTarget();
   const uploadEvidenceMutation = useUploadEvidence();
   const reviewEvidenceMutation = useReviewEvidence();
@@ -896,6 +900,11 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
                 }
               : undefined
           }
+          onDeleteAction={
+            effectiveMode === "governance"
+              ? (action) => setActionToDelete(action)
+              : undefined
+          }
           onReviseTarget={(action) => {
             if (effectiveMode === "audit") {
               setActionForRevisionRequest(action);
@@ -1114,6 +1123,40 @@ export const GovernanceDashboardPage: React.FC<GovernanceDashboardPageProps> = (
           refetchRevisionRequests();
         }}
       />
+
+      {/* Delete Task Confirmation Modal (Governance & Action Tracker Only) */}
+      {actionToDelete && (
+        <DeleteTaskConfirmModal
+          open={Boolean(actionToDelete)}
+          taskIdentifier={actionToDelete.action_id}
+          taskTitle={actionToDelete.action_point}
+          isLoading={deleteActionMutation.isPending}
+          onClose={() => setActionToDelete(null)}
+          onConfirm={async () => {
+            try {
+              await deleteActionMutation.mutateAsync(actionToDelete.id);
+              setSnackbar({
+                open: true,
+                message: `Task ${actionToDelete.action_id} deleted successfully.`,
+                severity: "success",
+              });
+              setActionToDelete(null);
+              refetchActions();
+              refetchMetrics();
+            } catch (err: any) {
+              const errMsg =
+                err?.response?.data?.errors ||
+                err?.message ||
+                "Failed to delete task.";
+              setSnackbar({
+                open: true,
+                message: typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg),
+                severity: "error",
+              });
+            }
+          }}
+        />
+      )}
 
       {/* Global Snackbar */}
       <Snackbar

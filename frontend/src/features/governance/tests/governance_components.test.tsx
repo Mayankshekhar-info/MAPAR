@@ -15,6 +15,8 @@ import { WeeklyProgressTimeline } from "../components/WeeklyProgressTimeline";
 import { ActionOwnerTasksPage } from "../pages/ActionOwnerTasksPage";
 import { GovernanceDashboardPage } from "../pages/GovernanceDashboardPage";
 import { GovernanceDetailDrawer } from "../components/GovernanceDetailDrawer";
+import { GovernanceTable } from "../components/GovernanceTable";
+import { DeleteTaskConfirmModal } from "../components/DeleteTaskConfirmModal";
 import { TaskReviewsCard } from "../components/TaskReviewsCard";
 import { AssignTaskReviewModal } from "../components/AssignTaskReviewModal";
 import { SubmitTaskReviewModal } from "../components/SubmitTaskReviewModal";
@@ -1072,5 +1074,172 @@ describe("Audit & Action Owner Upload Proof Button Scoping", () => {
     expect(await screen.findByText("Perform critical compliance review")).toBeInTheDocument();
     // Verify Upload Proof button is present in Governance & Action Tracker mode
     expect(screen.getAllByRole("button", { name: /Upload Proof/i }).length).toBeGreaterThan(0);
+  });
+});
+
+describe("DeleteTaskConfirmModal Component", () => {
+  it("renders task identifier and description and triggers onConfirm upon clicking Confirm Delete", () => {
+    const handleConfirm = vi.fn();
+    const handleClose = vi.fn();
+
+    render(
+      <DeleteTaskConfirmModal
+        open={true}
+        taskIdentifier="ACT-00501"
+        taskTitle="Upgrade telecom site power system"
+        onClose={handleClose}
+        onConfirm={handleConfirm}
+      />
+    );
+
+    expect(screen.getByText("Delete Task")).toBeInTheDocument();
+    expect(screen.getByText("ACT-00501")).toBeInTheDocument();
+    expect(screen.getByText("Upgrade telecom site power system")).toBeInTheDocument();
+
+    const deleteBtn = screen.getByRole("button", { name: /Confirm Delete/i });
+    fireEvent.click(deleteBtn);
+    expect(handleConfirm).toHaveBeenCalledTimes(1);
+    expect(handleClose).not.toHaveBeenCalled();
+  });
+
+  it("triggers onClose and does NOT trigger onConfirm when clicking Cancel", () => {
+    const handleConfirm = vi.fn();
+    const handleClose = vi.fn();
+
+    render(
+      <DeleteTaskConfirmModal
+        open={true}
+        taskIdentifier="ACT-00501"
+        taskTitle="Upgrade telecom site power system"
+        onClose={handleClose}
+        onConfirm={handleConfirm}
+      />
+    );
+
+    const cancelBtn = screen.getByRole("button", { name: /Cancel/i });
+    fireEvent.click(cancelBtn);
+    expect(handleClose).toHaveBeenCalledTimes(1);
+    expect(handleConfirm).not.toHaveBeenCalled();
+  });
+});
+
+describe("Delete Task Scoping in GovernanceTable and GovernanceDetailDrawer", () => {
+  const sampleTask: GovernanceActionPoint = {
+    id: 501,
+    action_id: "ACT-00501",
+    circle: { id: 1, name: "Punjab", code: "PUN", region: "North" },
+    function_area: "Operations",
+    action_point: "Upgrade telecom site power system",
+    key_deliverable: "Install lithium battery bank",
+    weeks_in_review: 0,
+    owner: { id: 10, username: "engineer1", full_name: "Lead Engineer", email: "eng@telecom.com", role: "Action Owner" },
+    status: "WIP",
+    priority: "High",
+    current_progress_percent: 50,
+    raised_date: "2026-01-15",
+    target_closure_date: "2026-03-31",
+    current_target_date: "2026-03-31",
+    revision_count: 0,
+    ageing_days: 10,
+    ageing_bucket: "8-15 Days",
+    evidence_required: true,
+    evidence_status: "Pending Review",
+    last_update: "Battery arrived on site",
+    is_escalated: false,
+    is_overdue: false,
+    created_at: "2026-01-15T10:00:00Z",
+    updated_at: "2026-01-20T10:00:00Z",
+  };
+
+  it("renders Delete button in GovernanceTable in Governance mode (/governance)", () => {
+    const handleDelete = vi.fn();
+
+    render(
+      <MemoryRouter initialEntries={["/governance"]}>
+        <GovernanceTable
+          actions={[sampleTask]}
+          totalCount={1}
+          filters={{ page: 1, page_size: 25 }}
+          onFilterChange={vi.fn()}
+          onSelectAction={vi.fn()}
+          onReviseTarget={vi.fn()}
+          onUploadEvidence={vi.fn()}
+          onDeleteAction={handleDelete}
+        />
+      </MemoryRouter>
+    );
+
+    const deleteBtn = screen.getByRole("button", { name: /Delete Task/i });
+    expect(deleteBtn).toBeInTheDocument();
+    fireEvent.click(deleteBtn);
+    expect(handleDelete).toHaveBeenCalledWith(sampleTask);
+  });
+
+  it("does NOT render Delete button in GovernanceTable in Audit & Action Owner mode (/audit)", () => {
+    const handleDelete = vi.fn();
+
+    render(
+      <MemoryRouter initialEntries={["/audit"]}>
+        <GovernanceTable
+          actions={[sampleTask]}
+          totalCount={1}
+          filters={{ page: 1, page_size: 25 }}
+          onFilterChange={vi.fn()}
+          onSelectAction={vi.fn()}
+          onReviseTarget={vi.fn()}
+          onUploadEvidence={vi.fn()}
+          onDeleteAction={handleDelete}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole("button", { name: /Delete Task/i })).not.toBeInTheDocument();
+  });
+
+  it("renders Delete Task button in GovernanceDetailDrawer in Governance mode", async () => {
+    vi.spyOn(governanceService, "getWeeklyUpdates").mockResolvedValue([]);
+    const handleDelete = vi.fn();
+
+    render(
+      <MemoryRouter initialEntries={["/governance"]}>
+        <GovernanceDetailDrawer
+          open={true}
+          action={sampleTask}
+          onClose={vi.fn()}
+          onReviseTarget={vi.fn()}
+          onUploadEvidence={vi.fn()}
+          onReviewEvidence={vi.fn()}
+          onDelete={handleDelete}
+        />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("Upgrade telecom site power system")).toBeInTheDocument();
+    const deleteBtn = screen.getByRole("button", { name: /Delete Task/i });
+    expect(deleteBtn).toBeInTheDocument();
+    fireEvent.click(deleteBtn);
+    expect(handleDelete).toHaveBeenCalledWith(sampleTask);
+  });
+
+  it("does NOT render Delete Task button in GovernanceDetailDrawer in Audit & Action Owner mode", async () => {
+    vi.spyOn(governanceService, "getWeeklyUpdates").mockResolvedValue([]);
+    const handleDelete = vi.fn();
+
+    render(
+      <MemoryRouter initialEntries={["/audit"]}>
+        <GovernanceDetailDrawer
+          open={true}
+          action={sampleTask}
+          onClose={vi.fn()}
+          onReviseTarget={vi.fn()}
+          onUploadEvidence={vi.fn()}
+          onReviewEvidence={vi.fn()}
+          onDelete={handleDelete}
+        />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText("Upgrade telecom site power system")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Delete Task/i })).not.toBeInTheDocument();
   });
 });

@@ -30,6 +30,7 @@ import DynamicFeedIcon from "@mui/icons-material/DynamicFeed";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import PriorityHighIcon from "@mui/icons-material/PriorityHigh";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import dayjs from "dayjs";
 
 import { colorTokens } from "../../../app/theme/tokens";
@@ -48,6 +49,7 @@ interface GovernanceTableProps {
   onFilterChange: (newFilters: Partial<GovernanceFilterParams>) => void;
   onSelectAction: (action: GovernanceActionPoint) => void;
   onEditAction?: (action: GovernanceActionPoint) => void;
+  onDeleteAction?: (action: GovernanceActionPoint) => void;
   onReviseTarget: (action: GovernanceActionPoint) => void;
   onUploadEvidence: (action: GovernanceActionPoint) => void;
   onOpenWeeklyModal?: (action: GovernanceActionPoint) => void;
@@ -66,6 +68,7 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
   onFilterChange,
   onSelectAction,
   onEditAction,
+  onDeleteAction,
   onReviseTarget,
   onUploadEvidence,
   onOpenWeeklyModal,
@@ -805,6 +808,24 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
                             </IconButton>
                           </Tooltip>
                         )}
+                        {onDeleteAction && !location.pathname.startsWith("/audit") && !location.pathname.startsWith("/documents") && (
+                          <Tooltip title="Delete Task" arrow>
+                            <IconButton
+                              size="small"
+                              aria-label="Delete Task"
+                              onClick={() => onDeleteAction(row)}
+                              sx={{
+                                color: colorTokens.status.error.main,
+                                "&:hover": {
+                                  backgroundColor: "#FEF2F2",
+                                  color: colorTokens.status.error.text,
+                                },
+                              }}
+                            >
+                              <DeleteOutlineIcon sx={{ fontSize: 18 }} />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         <Tooltip title="View Full Task Page" arrow>
                           <IconButton
                             size="small"
@@ -1079,6 +1100,24 @@ export const GovernanceTable: React.FC<GovernanceTableProps> = ({
                               sx={{ color: colorTokens.primary.main }}
                             >
                               <EditOutlinedIcon sx={{ fontSize: 18 }} />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                        {onDeleteAction && !location.pathname.startsWith("/audit") && !location.pathname.startsWith("/documents") && (
+                          <Tooltip title="Delete Task" arrow>
+                            <IconButton
+                              size="small"
+                              aria-label="Delete Task"
+                              onClick={() => onDeleteAction(row)}
+                              sx={{
+                                color: colorTokens.status.error.main,
+                                "&:hover": {
+                                  backgroundColor: "#FEF2F2",
+                                  color: colorTokens.status.error.text,
+                                },
+                              }}
+                            >
+                              <DeleteOutlineIcon sx={{ fontSize: 18 }} />
                             </IconButton>
                           </Tooltip>
                         )}

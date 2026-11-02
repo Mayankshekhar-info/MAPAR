@@ -32,3 +32,4 @@ export * from "./pages/GovernanceDashboardPage";
 export * from "./pages/TaskDetailPage";
 export * from "./pages/ActionOwnerTasksPage";
 
+export * from "./components/DeleteTaskConfirmModal";

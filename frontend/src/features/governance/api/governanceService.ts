@@ -97,8 +97,11 @@ export const governanceService = {
     return res.data.action;
   },
 
-  async deleteAction(id: number): Promise<void> {
-    await api.delete(`/governance/actions/${id}/`);
+  async deleteAction(id: number, mode?: string): Promise<{ success: boolean; message: string }> {
+    const res = await api.delete<{ success: boolean; message: string }>(`/governance/actions/${id}/`, {
+      params: mode ? { mode } : undefined,
+    });
+    return res.data;
   },
 
   async reviseTarget(id: number, payload: ReviseTargetPayload): Promise<{ revision: GovernanceTargetRevision; action: GovernanceActionPoint }> {

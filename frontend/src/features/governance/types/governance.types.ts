@@ -160,6 +160,7 @@ export interface TaskFullDetailResponse {
   can_review_evidence?: boolean;
   has_pending_revision?: boolean;
   can_edit_task?: boolean;
+  can_delete_task?: boolean;
 }
 
 

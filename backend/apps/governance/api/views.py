@@ -233,10 +233,27 @@ class GovernanceActionPointDetailView(APIView):
 
     def delete(self, request, pk):
         action = self._get_action(pk, request.user)
-        if not (request.user.is_superuser or getattr(request.user, "is_superadmin", False) or request.user.role == "SUPER_ADMIN"):
-            return Response({"success": False, "errors": "Only Super Admins can delete action points."}, status=status.HTTP_403_FORBIDDEN)
-        action.delete()
-        return Response({"success": True, "message": "Action point deleted successfully."})
+        mode = request.query_params.get("mode") or (request.data.get("mode") if hasattr(request, "data") and isinstance(request.data, dict) else None)
+        if not mode and "audit" in request.path:
+            mode = "audit"
+
+        if mode == "audit" or getattr(request.user, "role", None) in [User.Role.ACTION_OWNER, User.Role.VIEWER]:
+            return Response(
+                {"success": False, "errors": "Task deletion is not permitted in the Audit & Action Owner module or for non-management roles."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if not GovernanceService.can_delete_task(action, request.user, mode=mode):
+            return Response(
+                {"success": False, "errors": "You do not have permission to delete this action point."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            GovernanceService.delete_action_point(action, request.user, mode=mode)
+            return Response({"success": True, "message": f"Action point {action.action_id} deleted successfully."})
+        except PermissionDenied as pe:
+            return Response({"success": False, "errors": str(pe)}, status=status.HTTP_403_FORBIDDEN)
 
 
 class GovernanceEvidenceUploadView(APIView):
@@ -744,6 +761,7 @@ class GovernanceActionPointFullDetailView(APIView):
             "task_reviews": task_reviews_serializer.data,
             "active_review": active_review_serializer,
             "can_edit_task": detail_data.get("can_edit_task", False),
+            "can_delete_task": detail_data.get("can_delete_task", False),
             "can_assign_review": detail_data.get("can_assign_review", True),
             "can_submit_for_verification": detail_data.get("can_submit_for_verification", False),
             "can_verify_review": detail_data.get("can_verify_review", False),

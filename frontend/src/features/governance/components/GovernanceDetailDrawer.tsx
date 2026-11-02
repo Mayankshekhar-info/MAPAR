@@ -17,6 +17,7 @@ import DownloadOutlinedIcon from "@mui/icons-material/DownloadOutlined";
 import RateReviewOutlinedIcon from "@mui/icons-material/RateReviewOutlined";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
 import EventRepeatIcon from "@mui/icons-material/EventRepeat";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 
 import { colorTokens, radiusTokens } from "../../../app/theme/tokens";
 import { GovernanceActionPoint, GovernanceEvidenceItem, GovernanceWeeklyUpdate } from "../types/governance.types";
@@ -28,6 +29,7 @@ interface GovernanceDetailDrawerProps {
   action: GovernanceActionPoint | null;
   onClose: () => void;
   onEdit?: (action: GovernanceActionPoint) => void;
+  onDelete?: (action: GovernanceActionPoint) => void;
   onReviseTarget: (action: GovernanceActionPoint) => void;
   onUploadEvidence: (action: GovernanceActionPoint) => void;
   onReviewEvidence: (evidence: GovernanceEvidenceItem) => void;
@@ -38,6 +40,7 @@ export const GovernanceDetailDrawer: React.FC<GovernanceDetailDrawerProps> = ({
   action,
   onClose,
   onEdit,
+  onDelete,
   onReviseTarget,
   onUploadEvidence,
   onReviewEvidence,
@@ -708,6 +711,26 @@ export const GovernanceDetailDrawer: React.FC<GovernanceDetailDrawerProps> = ({
           gap: 1.5,
         }}
       >
+        {!isAuditMode && onDelete && (
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteOutlineIcon />}
+            onClick={() => onDelete(action)}
+            sx={{
+              flex: 1,
+              minWidth: 120,
+              color: colorTokens.status.error.main,
+              borderColor: colorTokens.status.error.main,
+              "&:hover": {
+                borderColor: colorTokens.status.error.text,
+                backgroundColor: "#FEF2F2",
+              },
+            }}
+          >
+            Delete Task
+          </Button>
+        )}
         {!isAuditMode && (
           <Button
             variant="outlined"

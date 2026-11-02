@@ -216,9 +216,26 @@ export function resolveSafeLandingRoute(targetPath: string, user: AuthUser | nul
     return fallbackPath;
   }
 
-  // Check required module for targetPath
+  // Check required module for targetPath (including modules commented out from sidebar)
   const matchedItem = findNavigationItem(targetPath, MAPAR_NAVIGATION_CONFIG);
-  if (matchedItem?.moduleCode && !user.accessible_modules.includes(matchedItem.moduleCode)) {
+  const KNOWN_ROUTE_MODULES: Record<string, string> = {
+    "/operations": "operations",
+    "/workflow": "workflow",
+    "/workforce": "workforce",
+    "/finance": "finance",
+    "/reporting": "reports",
+    "/kpi": "kpi",
+    "/governance": "governance",
+    "/audit": "audit",
+    "/documents": "documents",
+    "/uploads": "uploads",
+    "/slides": "slides",
+    "/organization": "organization",
+    "/users": "admin",
+    "/admin": "admin",
+  };
+  const requiredModule = matchedItem?.moduleCode || KNOWN_ROUTE_MODULES[targetPath];
+  if (requiredModule && !user.accessible_modules.includes(requiredModule)) {
     return fallbackPath;
   }
 
