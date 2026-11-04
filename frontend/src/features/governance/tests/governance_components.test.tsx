@@ -708,11 +708,11 @@ describe("ActionOwnerTasksPage Component", () => {
     expect(screen.getByText("Quarterly Safety Protocol Review")).toBeInTheDocument();
     expect(screen.getByText("Back to Action Status Matrix")).toBeInTheDocument();
 
-    // Verify Send Email button is NOT rendered
-    expect(screen.queryByRole("button", { name: /Send Email/i })).not.toBeInTheDocument();
+    // Verify Send Email button is rendered in Governance mode
+    expect(screen.getByRole("button", { name: /Send Email/i })).toBeInTheDocument();
   }, 15000);
 
-  it("confirms Send Email button and email modal are NOT present in Governance mode", async () => {
+  it("renders Send Email button in Governance mode and opens email modal on click", async () => {
     vi.spyOn(governanceService, "getActions").mockResolvedValue({
       success: true,
       count: 2,
@@ -735,6 +735,19 @@ describe("ActionOwnerTasksPage Component", () => {
         } as any,
       ],
     });
+    vi.spyOn(governanceService, "getOwnerEmailPreview").mockResolvedValue({
+      success: true,
+      owner_id: 5,
+      recipient_name: "Rahul Sharma",
+      recipient_email: "rahul@example.com",
+      has_valid_email: true,
+      eligible_task_count: 1,
+      action_ids: ["ACT-00101"],
+      closed_tasks_excluded_count: 0,
+      overdue_count: 0,
+      high_priority_count: 1,
+      has_eligible_tasks: true,
+    });
 
     render(
       <MemoryRouter initialEntries={["/governance/owners/5/tasks?name=Rahul%20Sharma"]}>
@@ -745,8 +758,12 @@ describe("ActionOwnerTasksPage Component", () => {
     );
 
     await screen.findByText("ACT-00101");
-    expect(screen.queryByRole("button", { name: /Send Email/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const sendEmailBtn = screen.getByRole("button", { name: /Send Email/i });
+    expect(sendEmailBtn).toBeInTheDocument();
+
+    fireEvent.click(sendEmailBtn);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText(/Send Consolidated Action Tasks Email/i)).toBeInTheDocument();
   });
 
   it("confirms Send Email button and email modal are NOT present in Audit & Action Owner mode", async () => {

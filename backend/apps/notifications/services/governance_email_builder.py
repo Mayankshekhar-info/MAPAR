@@ -98,7 +98,7 @@ class GovernanceEmailBuilder:
 
         today = timezone.localdate()
         clean_base = (base_url or "https://pagms.pratap.tech").strip().rstrip("/")
-        if not clean_base or "localhost" in clean_base:
+        if not clean_base or "localhost" in clean_base.lower() or "127.0.0.1" in clean_base:
             clean_base = "https://pagms.pratap.tech"
         base_url = clean_base
         login_url = f"{base_url}/login"

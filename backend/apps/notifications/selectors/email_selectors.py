@@ -2,7 +2,11 @@ from typing import Any, Dict, Optional
 from django.db.models import Count, Q
 from django.utils import timezone
 
-from apps.notifications.models import EmailConfiguration, EmailDeliveryRecord
+from apps.notifications.models import (
+    EmailConfiguration,
+    EmailDeliveryRecord,
+    ScheduledSlotExecution,
+)
 from apps.notifications.services.reminder_scheduler_service import ReminderSchedulerService, SCHEDULE_SLOTS
 from apps.governance.models import GovernanceActionPoint
 
@@ -56,7 +60,7 @@ def get_delivery_logs_queryset(
 
 
 def get_schedule_overview_dto() -> Dict[str, Any]:
-    """Provides real-time metrics for the automated reminder schedule and unclosed tasks."""
+    """Provides real-time metrics and diagnostic status for the automated reminder schedule and unclosed tasks."""
     current_ist = ReminderSchedulerService.get_current_ist_time()
     day_name = current_ist.strftime("%A")
 
@@ -86,6 +90,8 @@ def get_schedule_overview_dto() -> Dict[str, Any]:
     )
 
     matching_slot = ReminderSchedulerService.resolve_matching_slot(current_ist)
+    next_run_dt, next_slot_label = ReminderSchedulerService.calculate_next_scheduled_run(current_ist)
+    last_exec = ScheduledSlotExecution.objects.order_by("-started_at").first()
 
     return {
         "current_ist_time": current_ist.strftime("%Y-%m-%d %H:%M:%S IST"),
@@ -98,4 +104,18 @@ def get_schedule_overview_dto() -> Dict[str, Any]:
         "past_7_days_sent": stats["total_sent"] or 0,
         "past_7_days_failed": stats["total_failed"] or 0,
         "past_7_days_retrying": stats["total_retrying"] or 0,
+        "timezone": "Asia/Kolkata",
+        "next_execution_time": next_run_dt.strftime("%Y-%m-%d %H:%M:%S IST") if next_run_dt else None,
+        "next_execution_slot": next_slot_label,
+        "scheduler_status": "ACTIVE",
+        "last_execution": {
+            "slot_key": last_exec.slot_key,
+            "status": last_exec.status,
+            "started_at": last_exec.started_at.strftime("%Y-%m-%d %H:%M:%S IST") if last_exec.started_at else None,
+            "completed_at": last_exec.completed_at.strftime("%Y-%m-%d %H:%M:%S IST") if last_exec.completed_at else None,
+            "sent_count": last_exec.sent_count,
+            "failed_count": last_exec.failed_count,
+            "triggered_by": last_exec.triggered_by,
+            "error": last_exec.error_message or None,
+        } if last_exec else None,
     }

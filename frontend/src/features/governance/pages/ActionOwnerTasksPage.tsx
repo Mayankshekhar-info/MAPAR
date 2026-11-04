@@ -43,6 +43,7 @@ import dayjs from "dayjs";
 import { colorTokens, radiusTokens } from "../../../app/theme/tokens";
 import { governanceService } from "../api/governanceService";
 import { GovernanceActionPoint } from "../types/governance.types";
+import { SendOwnerEmailModal } from "../components/SendOwnerEmailModal";
 
 interface ActionOwnerTasksPageProps {
   mode?: "governance" | "audit" | "documents";
@@ -60,6 +61,7 @@ export const ActionOwnerTasksPage: React.FC<ActionOwnerTasksPageProps> = ({ mode
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actions, setActions] = useState<GovernanceActionPoint[]>([]);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
   // Filtering state
   const [searchTerm, setSearchTerm] = useState("");
@@ -414,7 +416,31 @@ export const ActionOwnerTasksPage: React.FC<ActionOwnerTasksPageProps> = ({ mode
               }}
             />
 
-
+            {mode !== "audit" && (
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<EmailOutlinedIcon sx={{ fontSize: 17 }} />}
+                onClick={() => setIsEmailModalOpen(true)}
+                sx={{
+                  bgcolor: colorTokens.primary.main,
+                  color: "#FFFFFF",
+                  fontWeight: 700,
+                  fontSize: "0.82rem",
+                  textTransform: "none",
+                  borderRadius: radiusTokens.sm,
+                  px: 2,
+                  py: 0.65,
+                  boxShadow: "0 2px 4px rgba(2, 132, 199, 0.2)",
+                  "&:hover": {
+                    bgcolor: colorTokens.primary.dark,
+                    boxShadow: "0 4px 8px rgba(2, 132, 199, 0.3)",
+                  },
+                }}
+              >
+                Send Email
+              </Button>
+            )}
           </Box>
         </Box>
       </Paper>
@@ -1309,7 +1335,16 @@ export const ActionOwnerTasksPage: React.FC<ActionOwnerTasksPageProps> = ({ mode
         )}
       </Paper>
 
-
+      {/* Consolidated Action Owner Email Dispatch Modal */}
+      {mode !== "audit" && (
+        <SendOwnerEmailModal
+          open={isEmailModalOpen}
+          onClose={() => setIsEmailModalOpen(false)}
+          ownerId={parsedOwnerId}
+          ownerName={ownerDisplayName}
+          fallbackEmail={ownerEmail}
+        />
+      )}
     </Container>
   );
 };

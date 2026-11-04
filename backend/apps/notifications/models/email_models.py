@@ -153,10 +153,10 @@ class EmailConfiguration(models.Model):
         is_enabled = self.is_enabled if self.smtp_host else os.environ.get("SMTP_ENABLED", "True").lower() in ("true", "1", "yes")
 
         env_frontend = (os.environ.get("FRONTEND_BASE_URL") or os.environ.get("PUBLIC_BASE_URL", "")).strip()
-        if env_frontend:
-            frontend_url = env_frontend
-        elif self.frontend_base_url and self.frontend_base_url.strip() and "localhost" not in self.frontend_base_url:
-            frontend_url = self.frontend_base_url.strip()
+        if env_frontend and "localhost" not in env_frontend.lower():
+            frontend_url = env_frontend.rstrip("/")
+        elif self.frontend_base_url and self.frontend_base_url.strip() and "localhost" not in self.frontend_base_url.lower():
+            frontend_url = self.frontend_base_url.strip().rstrip("/")
         else:
             frontend_url = self.DEFAULT_FRONTEND_BASE_URL
 
@@ -303,3 +303,51 @@ class EmailDeliveryRecord(models.Model):
 
     def __str__(self):
         return f"[{self.status}] {self.notification_type} -> {self.recipient_email} ({self.action_id})"
+
+
+class ScheduledSlotExecution(models.Model):
+    """
+    Atomic execution audit and concurrency lock for automated scheduled reminder slots.
+    Guarantees strict at-most-once execution across multi-process deployments.
+    Tracks status, job pickup time, completion time, counts, and error diagnostic details.
+    """
+
+    class Status(models.TextChoices):
+        PROCESSING = "PROCESSING", "Currently Processing"
+        COMPLETED = "COMPLETED", "Completed Successfully"
+        FAILED = "FAILED", "Failed"
+        SKIPPED = "SKIPPED", "Skipped"
+
+    slot_key = models.CharField(
+        max_length=150,
+        unique=True,
+        db_index=True,
+        help_text="Canonical slot identifier (e.g. 2026-W45:Friday:10:00)",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PROCESSING,
+        db_index=True,
+    )
+    started_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    sent_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+    error_message = models.TextField(blank=True, default="")
+    triggered_by = models.CharField(
+        max_length=50,
+        default="scheduler_daemon",
+        help_text="Origin of trigger: in_process_daemon, celery, cron, or manual",
+    )
+
+    class Meta:
+        app_label = "notifications"
+        db_table = "notifications_scheduled_slot_execution"
+        ordering = ["-started_at"]
+        verbose_name = "Scheduled Slot Execution"
+        verbose_name_plural = "Scheduled Slot Executions"
+
+    def __str__(self):
+        return f"[{self.status}] Slot {self.slot_key} ({self.started_at})"

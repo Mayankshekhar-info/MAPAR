@@ -50,12 +50,22 @@ def send_task_assignment_email_async(self, action_point_id: int, is_reassignment
 def process_scheduled_reminders_task(target_slot: str = "", force: bool = False):
     """
     Periodic Celery Beat task that evaluates and dispatches unclosed task reminders
-    according to the Asia/Kolkata Friday/Saturday/Sunday matrix.
+    according to the active Asia/Kolkata weekly reminder matrix.
     """
     from apps.notifications.services.reminder_scheduler_service import ReminderSchedulerService
 
     slot = target_slot.strip() or None
     logger.info("Executing scheduled reminder background cycle (slot=%s, force=%s)...", slot, force)
-    result = ReminderSchedulerService.process_scheduled_reminders(target_slot=slot, force=force)
+    if slot:
+        result = ReminderSchedulerService.process_scheduled_reminders(
+            target_slot=slot,
+            force=force,
+            trigger_source="celery",
+        )
+    else:
+        result = ReminderSchedulerService.process_due_schedules(
+            force=force,
+            trigger_source="celery",
+        )
     logger.info("Reminder background cycle finished: %s", result)
     return result

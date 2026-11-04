@@ -195,3 +195,102 @@ def test_send_owner_consolidated_email_success(test_setup):
         assert call_kwargs["recipient_email"] == "rajveer.singh@pratap.co.in"
         assert "ACT-PB-001" in call_kwargs["action_id"]
         assert "ACT-PB-002" in call_kwargs["action_id"]
+
+
+def test_production_urls_enforced_in_builder(test_setup):
+    """
+    CRITICAL REQUIREMENT: Verify all email links point strictly to
+    https://pagms.pratap.tech and https://pagms.pratap.tech/login,
+    and reject localhost / 127.0.0.1.
+    """
+    from apps.notifications.services.governance_email_builder import GovernanceEmailBuilder
+
+    tasks = [test_setup["act1"], test_setup["act2"]]
+
+    for dummy_base in ["http://localhost:3000", "http://127.0.0.1:8000", ""]:
+        subject, html_content, plain_content = GovernanceEmailBuilder.build_email(
+            recipient_name="Rajveer Singh",
+            tasks=tasks,
+            base_url=dummy_base,
+        )
+
+        assert "localhost" not in html_content
+        assert "127.0.0.1" not in html_content
+        assert "https://pagms.pratap.tech/login" in html_content
+        assert "https://pagms.pratap.tech/governance/tasks/" in html_content
+        assert "https://pagms.pratap.tech/login" in plain_content
+
+
+def test_send_owner_consolidated_email_3_and_5_tasks(test_setup):
+    """
+    CRITICAL REQUIREMENT: Verify consolidated delivery sends exactly ONE email
+    when owner has 3 or 5 eligible tasks.
+    """
+    circle = test_setup["circle"]
+    admin = test_setup["admin"]
+
+    owner3 = User.objects.create_user(
+        username="ananya_sharma",
+        email="ananya.sharma@pratap.co.in",
+        first_name="Ananya",
+        last_name="Sharma",
+        role=User.Role.ACTION_OWNER,
+        circle=circle,
+    )
+
+    # Create 3 tasks
+    for i in range(1, 4):
+        GovernanceActionPoint.objects.create(
+            action_id=f"ACT-PB-30{i}",
+            circle=circle,
+            owner=owner3,
+            action_point=f"Action item number {i}",
+            status=GovernanceActionPoint.Status.OPEN,
+            priority=GovernanceActionPoint.Priority.HIGH,
+            target_closure_date=timezone.localdate() + timezone.timedelta(days=i),
+        )
+
+    with patch("apps.notifications.services.smtp_service.SMTPService.send_html_email") as mock_send:
+        mock_send.return_value = (True, None)
+
+        res3 = StatusMatrixEmailService.send_owner_consolidated_email(admin, owner_id=owner3.id)
+        assert res3["success"] is True
+        assert res3["task_count"] == 3
+        # Exactly ONE email sent
+        assert mock_send.call_count == 1
+        html_body = mock_send.call_args[1]["html_content"]
+        for i in range(1, 4):
+            assert f"ACT-PB-30{i}" in html_body
+
+    owner5 = User.objects.create_user(
+        username="tarun_mehta",
+        email="tarun.mehta@pratap.co.in",
+        first_name="Tarun",
+        last_name="Mehta",
+        role=User.Role.ACTION_OWNER,
+        circle=circle,
+    )
+
+    # Create 5 tasks
+    for i in range(1, 6):
+        GovernanceActionPoint.objects.create(
+            action_id=f"ACT-PB-50{i}",
+            circle=circle,
+            owner=owner5,
+            action_point=f"Action item number {i}",
+            status=GovernanceActionPoint.Status.WIP,
+            priority=GovernanceActionPoint.Priority.MEDIUM,
+            target_closure_date=timezone.localdate() + timezone.timedelta(days=i),
+        )
+
+    with patch("apps.notifications.services.smtp_service.SMTPService.send_html_email") as mock_send:
+        mock_send.return_value = (True, None)
+
+        res5 = StatusMatrixEmailService.send_owner_consolidated_email(admin, owner_id=owner5.id)
+        assert res5["success"] is True
+        assert res5["task_count"] == 5
+        # Exactly ONE email sent
+        assert mock_send.call_count == 1
+        html_body = mock_send.call_args[1]["html_content"]
+        for i in range(1, 6):
+            assert f"ACT-PB-50{i}" in html_body

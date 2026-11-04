@@ -221,50 +221,17 @@ SECURE_REFERRER_POLICY = "same-origin"
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
 CELERY_TIMEZONE = TIME_ZONE
-CELERY_ENABLE_UTC = False
+CELERY_ENABLE_UTC = True
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
 
 from celery.schedules import crontab  # type: ignore
 
 CELERY_BEAT_SCHEDULE = {
-    # Friday: 1 reminder at 10:00 AM IST
-    "friday-reminder-10am": {
+    # Continuous dynamic evaluation for user-configured weekly reminder schedules in Asia/Kolkata
+    "dynamic-minute-reminder-evaluation": {
         "task": "apps.notifications.tasks.process_scheduled_reminders_task",
-        "schedule": crontab(minute=0, hour=10, day_of_week="friday"),
-        "kwargs": {"target_slot": "Friday:10:00"},
-    },
-    # Saturday: 2 reminders at 9:00 AM and 5:00 PM IST
-    "saturday-reminder-9am": {
-        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
-        "schedule": crontab(minute=0, hour=9, day_of_week="saturday"),
-        "kwargs": {"target_slot": "Saturday:09:00"},
-    },
-    "saturday-reminder-5pm": {
-        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
-        "schedule": crontab(minute=0, hour=17, day_of_week="saturday"),
-        "kwargs": {"target_slot": "Saturday:17:00"},
-    },
-    # Sunday: 3 reminders at 9:00 AM, 1:00 PM, 5:00 PM IST
-    "sunday-reminder-9am": {
-        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
-        "schedule": crontab(minute=0, hour=9, day_of_week="sunday"),
-        "kwargs": {"target_slot": "Sunday:09:00"},
-    },
-    "sunday-reminder-1pm": {
-        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
-        "schedule": crontab(minute=0, hour=13, day_of_week="sunday"),
-        "kwargs": {"target_slot": "Sunday:13:00"},
-    },
-    "sunday-reminder-5pm": {
-        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
-        "schedule": crontab(minute=0, hour=17, day_of_week="sunday"),
-        "kwargs": {"target_slot": "Sunday:17:00"},
-    },
-    # Dynamic hourly evaluation for user-configured weekly reminder schedules (8 AM to 8 PM IST)
-    "dynamic-hourly-reminder-evaluation": {
-        "task": "apps.notifications.tasks.process_scheduled_reminders_task",
-        "schedule": crontab(minute=0, hour="8-20"),
+        "schedule": crontab(minute="*"),
         "kwargs": {},
     },
 }
